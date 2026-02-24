@@ -2,6 +2,7 @@ import os
 import time
 import base64
 import uuid 
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
@@ -137,6 +138,24 @@ def salvar_imagem_base64(base64_string):
         with open(filepath, "wb") as f: f.write(data)
         return filename
     except: return None
+
+
+# --- INTEGRAÇÃO N8N ---
+def notificar_status_n8n(card, nome_coluna):
+    url_n8n = "http://localhost:5678/webhook-test/atualizacao-pedido" 
+    
+    payload = {
+        "cliente": card.cliente or "Cliente",
+        "telefone": "5579999999999", 
+        "pedido": str(card.id),
+        "produto": card.titulo,
+        "etapa_atual": nome_coluna  # <--- Agora enviamos a coluna
+    }
+    
+    try:
+        requests.post(url_n8n, json=payload, timeout=3)
+    except Exception as e:
+        print(f"Erro ao notificar n8n: {e}")
 
 # --- ROTAS PRINCIPAIS ---
 
@@ -315,13 +334,47 @@ def editar():
 @app.route('/mover', methods=['POST'])
 @login_required
 def mover():
-    data = request.get_json(); c = Card.query.get(data.get('id'))
+    data = request.get_json()
+    c = Card.query.get(data.get('id'))
+    
     if c:
-        if 'setor_id' in data: c.setor_id = data.get('setor_id')
+        novo_setor_id = data.get('setor_id')
+        
+        # Atualiza setor e status padrão vindo do front
+        if 'setor_id' in data: c.setor_id = novo_setor_id
         if 'status_id' in data: c.status_id = data.get('status_id')
-        db.session.commit(); atualizar_versao()
+
+        # --- AUTOMAÇÃO DE STATUS (Lógica Nova) ---
+        # Busca o nome do setor para onde o card foi movido
+        setor_destino = Setor.query.get(novo_setor_id)
+
+        if setor_destino:
+            nome_setor = setor_destino.nome.strip() # Remove espaços extras por segurança
+
+            # Regra 1: Se foi para "Produção" -> Muda Status para "Em acabamento"
+            if nome_setor == "Produção":
+                status_alvo = Status.query.filter_by(nome="Em acabamento").first()
+                if status_alvo:
+                    c.status_id = status_alvo.id
+            
+            # Regra 2: Se foi para "Pronto para entrega" -> Muda Status para "Expedição"
+            elif nome_setor == "Pronto para entrega":
+                status_alvo = Status.query.filter_by(nome="Expedição").first()
+                if status_alvo:
+                    c.status_id = status_alvo.id
+
+        db.session.commit()
+        atualizar_versao()
+
+        if setor_destino:
+            # Enviamos o nome da coluna para o n8n (ex: "Impressão", "Expedição")
+            notificar_status_n8n(c, setor_destino.nome)
+
         return jsonify({'success': True})
+    
     return jsonify({'error': 'Erro'}), 404
+
+
 
 @app.route('/arquivar/<int:id>', methods=['POST'])
 @login_required
