@@ -18,12 +18,6 @@ Ordens de serviço em papel se perdiam, o setor de acabamento não sabia o que a
 
 ---
 
-## 📸 Demonstração
-*(Coloque aqui seu GIF ou Print do Kanban)*
-![Dashboard PrintFlow](assets/printflow-demo.gif)
-
----
-
 ## 🚀 Diferenciais Técnicos
 
 ### 📱 Mobile First & UX Otimizada
