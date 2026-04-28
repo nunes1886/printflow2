@@ -47,17 +47,16 @@
     </nav>
 
     <div class="container pb-5">
-      {% with messages = get_flashed_messages() %} {% if messages %} {% for
-      message in messages %}
-      <div class="alert alert-warning alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button
-          type="button"
-          class="btn-close"
-          data-bs-dismiss="alert"
-        ></button>
-      </div>
-      {% endfor %} {% endif %} {% endwith %}
+      {% with messages = get_flashed_messages() %} 
+        {% if messages %} 
+          {% for message in messages %}
+          <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+          {% endfor %} 
+        {% endif %} 
+      {% endwith %}
 
       <h2 class="mb-4 fw-bold text-secondary">
         <i class="fas fa-cogs me-2"></i>Configurações do Sistema
@@ -75,23 +74,33 @@
                 <tr>
                   <th>Ordem</th>
                   <th>Nome</th>
-                  <th class="text-end">Ação</th>
+                  <th class="text-end">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {% for setor in setores %}
                 <tr>
                   <td>
-                    <span class="badge bg-secondary">{{ setor.ordem }}</span>
+                    <form action="/setor/reordenar/{{ setor.id }}/subir" method="POST" style="display:inline">
+                        <button class="btn btn-sm btn-light py-0 px-1"><i class="fas fa-chevron-up"></i></button>
+                    </form>
+                    <form action="/setor/reordenar/{{ setor.id }}/descer" method="POST" style="display:inline">
+                        <button class="btn btn-sm btn-light py-0 px-1"><i class="fas fa-chevron-down"></i></button>
+                    </form>
+                    <span class="badge bg-secondary ms-1">{{ setor.ordem }}</span>
                   </td>
-                  <td>{{ setor.nome }}</td>
+                  <td>
+                      {{ setor.nome }}
+                      {% if not setor.mostrar_no_kanban %}
+                      <span class="badge bg-info ms-2" title="Invisível no Kanban. Usado apenas para Chat."><i class="fas fa-comment-slash"></i> Só Chat</span>
+                      {% endif %}
+                  </td>
                   <td class="text-end">
-                    <form
-                      action="/setor/excluir/{{ setor.id }}"
-                      method="POST"
-                      style="display: inline"
-                      onsubmit="return confirm('Tem certeza? Só é possível excluir se a coluna estiver vazia.')"
-                    >
+                    <button class="btn btn-outline-primary btn-sm border-0" onclick="abrirModalEdicaoSetor('{{ setor.id }}', '{{ setor.nome }}', {{ 'true' if setor.mostrar_no_kanban else 'false' }})">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+                    
+                    <form action="/setor/excluir/{{ setor.id }}" method="POST" style="display: inline" onsubmit="return confirm('Tem certeza? Só é possível excluir se a coluna estiver vazia.')">
                       <button class="btn btn-outline-danger btn-sm border-0">
                         <i class="fas fa-trash"></i>
                       </button>
@@ -102,25 +111,20 @@
               </tbody>
             </table>
 
-            <form
-              action="/setor/adicionar"
-              method="POST"
-              class="mt-4 p-3 bg-light rounded"
-            >
-              <label class="form-label small fw-bold text-muted"
-                >Novo Setor</label
-              >
+            <form action="/setor/adicionar" method="POST" class="mt-4 p-3 bg-light rounded">
+              <label class="form-label small fw-bold text-muted">Novo Setor</label>
               <div class="input-group">
-                <input
-                  type="text"
-                  name="nome"
-                  class="form-control"
-                  placeholder="Ex: Acabamento"
-                  required
-                />
+                <input type="text" name="nome" class="form-control" placeholder="Ex: Acabamento" required />
                 <button class="btn btn-success" type="submit">
                   <i class="fas fa-plus"></i> Adicionar
                 </button>
+              </div>
+              
+              <div class="form-check mt-3 text-start">
+                  <input class="form-check-input" type="checkbox" name="mostrar_no_kanban" id="mostrarKanban" checked>
+                  <label class="form-check-label small text-muted" for="mostrarKanban">
+                      Mostrar coluna no Kanban <br><small>(Desmarque para criar um grupo apenas para o Chat)</small>
+                  </label>
               </div>
             </form>
           </div>
@@ -128,28 +132,29 @@
 
         <div class="col-md-6">
           <div class="config-card">
-            <h5 class="fw-bold mb-3 border-bottom pb-2">
-              🏷️ Status (Etiquetas)
-            </h5>
+            
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                <h5 class="fw-bold mb-0">🏷️ Status (Etiquetas)</h5>
+                
+                <form action="/status/ordenar_alfa" method="POST">
+                    <button class="btn btn-sm btn-outline-secondary py-0"><i class="fas fa-sort-alpha-down me-1"></i> A-Z</button>
+                </form>
+            </div>
 
             <table class="table table-hover align-middle">
               <tbody>
                 {% for status in lista_status %}
                 <tr>
                   <td>
-                    <span
-                      class="color-dot me-2"
-                      style="background-color: {{ status.cor }};"
-                    ></span>
+                    <span class="color-dot me-2" style="background-color: {{ status.cor }};"></span>
                     {{ status.nome }}
                   </td>
                   <td class="text-end">
-                    <form
-                      action="/status/excluir/{{ status.id }}"
-                      method="POST"
-                      style="display: inline"
-                      onsubmit="return confirm('Excluir este status?')"
-                    >
+                    <button class="btn btn-outline-primary btn-sm border-0" onclick="abrirModalEdicaoStatus('{{ status.id }}', '{{ status.nome }}', '{{ status.cor }}')">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
+
+                    <form action="/status/excluir/{{ status.id }}" method="POST" style="display: inline" onsubmit="return confirm('Excluir este status?')">
                       <button class="btn btn-outline-danger btn-sm border-0">
                         <i class="fas fa-trash"></i>
                       </button>
@@ -160,32 +165,14 @@
               </tbody>
             </table>
 
-            <form
-              action="/status/adicionar"
-              method="POST"
-              class="mt-4 p-3 bg-light rounded"
-            >
-              <label class="form-label small fw-bold text-muted"
-                >Novo Status</label
-              >
+            <form action="/status/adicionar" method="POST" class="mt-4 p-3 bg-light rounded">
+              <label class="form-label small fw-bold text-muted">Novo Status</label>
               <div class="row g-2">
                 <div class="col-8">
-                  <input
-                    type="text"
-                    name="nome"
-                    class="form-control"
-                    placeholder="Ex: Pausado"
-                    required
-                  />
+                  <input type="text" name="nome" class="form-control" placeholder="Ex: Pausado" required />
                 </div>
                 <div class="col-2">
-                  <input
-                    type="color"
-                    name="cor"
-                    class="form-control form-control-color w-100"
-                    value="#563d7c"
-                    title="Escolher cor"
-                  />
+                  <input type="color" name="cor" class="form-control form-control-color w-100" value="#563d7c" title="Escolher cor" />
                 </div>
                 <div class="col-2">
                   <button class="btn btn-success w-100" type="submit">
@@ -271,6 +258,52 @@
       </div>
     </div>
 
+    <div class="modal fade" id="modalEdicaoSetor" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <form id="formEditSetor" method="POST">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Setor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <label class="form-label small fw-bold">Nome do Setor</label>
+              <input type="text" name="nome" id="editSetorNome" class="form-control mb-3" required>
+              <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="mostrar_no_kanban" id="editSetorKanban">
+                  <label class="form-check-label" for="editSetorKanban">Mostrar no Kanban</label>
+              </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary w-100">Salvar Alterações</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="modalEdicaoStatus" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <form id="formEditStatus" method="POST">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <label class="form-label small fw-bold">Nome do Status</label>
+              <input type="text" name="nome" id="editStatusNome" class="form-control mb-3" required>
+              <label class="form-label small fw-bold">Cor da Etiqueta</label>
+              <input type="color" name="cor" id="editStatusCor" class="form-control form-control-color w-100">
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary w-100">Salvar Alterações</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function executarLimpeza() {
@@ -311,6 +344,24 @@
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             });
+        }
+
+        // Funções para abrir os novos Modais de Edição
+        const modalSetor = new bootstrap.Modal(document.getElementById('modalEdicaoSetor'));
+        const modalStatus = new bootstrap.Modal(document.getElementById('modalEdicaoStatus'));
+
+        function abrirModalEdicaoSetor(id, nome, mostrar) {
+            document.getElementById('formEditSetor').action = '/setor/editar/' + id;
+            document.getElementById('editSetorNome').value = nome;
+            document.getElementById('editSetorKanban').checked = mostrar;
+            modalSetor.show();
+        }
+
+        function abrirModalEdicaoStatus(id, nome, cor) {
+            document.getElementById('formEditStatus').action = '/status/editar/' + id;
+            document.getElementById('editStatusNome').value = nome;
+            document.getElementById('editStatusCor').value = cor;
+            modalStatus.show();
         }
     </script>
   </body>

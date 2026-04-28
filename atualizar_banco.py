@@ -1,17 +1,40 @@
-from app import app, db
-from sqlalchemy import text
+import sqlite3
 
-print("--- ATUALIZANDO BANCO DE DADOS (PERMISSÃO ESTOQUE) ---")
+def atualizar_banco():
+    # Conecta ao banco de dados de produção
+    conn = sqlite3.connect('printflow.db')
+    cursor = conn.cursor()
 
-with app.app_context():
+    print("Iniciando atualização do banco de dados...")
+
     try:
-        # Comando SQL direto para criar a coluna nova na tabela existente
-        with db.engine.connect() as conn:
-            conn.execute(text("ALTER TABLE usuarios ADD COLUMN acesso_estoque BOOLEAN DEFAULT 0"))
-            conn.commit()
-        print("✅ Sucesso! Coluna 'acesso_estoque' criada.")
+        # Adicionando as colunas do CHAT 2.0
+        cursor.execute("ALTER TABLE mensagens ADD COLUMN tipo_chat VARCHAR(20) DEFAULT 'global'")
+        cursor.execute("ALTER TABLE mensagens ADD COLUMN destinatario VARCHAR(100)")
+        cursor.execute("ALTER TABLE mensagens ADD COLUMN setor_id INTEGER")
+        cursor.execute("ALTER TABLE mensagens ADD COLUMN lida BOOLEAN DEFAULT 0")
+        print("✅ Colunas do Chat 2.0 adicionadas com sucesso!")
     except Exception as e:
-        print(f"⚠️ Aviso (pode ser ignorado se a coluna já existir): {e}")
+        print("⚠️ Aviso Chat:", e)
 
-print("--- FIM ---")
-input("Pressione ENTER para sair...")
+    try:
+        # Criando a tabela para o DASHBOARD (Log de Produção)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS log_producao (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER,
+            card_titulo VARCHAR(100),
+            setor_nome VARCHAR(50),
+            data_movimentacao VARCHAR(20)
+        )
+        """)
+        print("✅ Tabela do Log de Produção (Dashboard) criada com sucesso!")
+    except Exception as e:
+        print("⚠️ Aviso Dashboard:", e)
+
+    conn.commit()
+    conn.close()
+    print("Atualização finalizada!")
+
+if __name__ == '__main__':
+    atualizar_banco()

@@ -493,16 +493,20 @@
             <div style="display: none" class="search-desc">
               {{ card.descricao }}
             </div>
-            <div
-              class="d-flex justify-content-between align-items-end mt-2 pt-2 border-top border-dark border-opacity-10"
-            >
+            
+            <div class="d-flex justify-content-between align-items-end mt-2 pt-2 border-top border-dark border-opacity-10">
               <div class="d-flex align-items-center">
                 {% if card.imagem_path %}
-                <span
-                  class="badge bg-light text-primary border border-primary me-2"
-                  ><i class="fas fa-image"></i> Print</span
-                >
-                {% endif %} {% if user.is_admin %}
+                <span class="badge bg-light text-primary border border-primary me-2"><i class="fas fa-image"></i> Print</span>
+                {% endif %} 
+                
+                {% if card.comentarios|length > 0 %}
+                <span class="badge bg-danger shadow-sm me-2" title="Anotações no pedido" style="font-size: 0.8rem;">
+                    <i class="fas fa-comment-dots"></i> {{ card.comentarios|length }}
+                </span>
+                {% endif %}
+
+                {% if user.is_admin %}
                 <button
                   class="btn-zap-card"
                   style="display: none"
@@ -522,6 +526,7 @@
               </div>
               {% endif %}
             </div>
+            
             <div
               class="d-lg-none d-flex justify-content-between mt-2 pt-1 border-top border-dark border-opacity-10"
             >
@@ -564,47 +569,47 @@
       <i class="fas fa-comments"></i>
     </button>
 
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="chatOffcanvas">
-      <div class="offcanvas-header bg-primary text-white">
-        <h5 class="offcanvas-title">
-          <i class="fas fa-users me-2"></i>Chat da Equipe
-        </h5>
-        <div class="d-flex gap-2">
-          {% if user.is_admin %}
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-light"
-            onclick="limparChat()"
-            title="Limpar"
-          >
-            <i class="fas fa-trash"></i>
-          </button>
-          {% endif %}
-          <button
-            type="button"
-            class="btn-close btn-close-white"
-            data-bs-dismiss="offcanvas"
-          ></button>
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="chatOffcanvas" style="width: 380px;">
+      <div class="offcanvas-header bg-primary text-white p-3">
+        <div class="w-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="offcanvas-title mb-0"><i class="fas fa-comments me-2"></i>Comunicação</h6>
+                <div>
+                    {% if user.is_admin %}
+                    <button type="button" class="btn btn-sm btn-outline-light border-0 me-2" onclick="limparChat()" title="Apagar Toda a Conversa Atual"><i class="fas fa-trash-alt"></i></button>
+                    {% endif %}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+                </div>
+            </div>
+            <select id="chatRoomSelect" class="form-select form-select-sm shadow-none" onchange="mudarSalaChat()">
+                <option value="global">🌍 Chat Global (Todos)</option>
+                <optgroup label="📍 Setores" id="optSetores"></optgroup>
+                <optgroup label="👤 Mensagem Direta" id="optUsuarios"></optgroup>
+            </select>
         </div>
       </div>
-      <div class="offcanvas-body p-0 d-flex flex-column">
-        <div id="chatBox" class="chat-container"></div>
-        <div class="p-2 border-top bg-light">
-          <form
-            id="formChat"
-            onsubmit="enviarMensagem(event)"
-            class="d-flex gap-2"
-          >
-            <input
-              type="text"
-              id="msgInput"
-              class="form-control"
-              placeholder="Digite..."
-              required
-              autocomplete="off"
-            />
-            <button type="submit" class="btn btn-primary">
-              <i class="fas fa-paper-plane"></i>
+      
+      <div class="offcanvas-body p-0 d-flex flex-column" style="background-color: #e5ddd5;">
+        <div id="chatBox" class="chat-container flex-grow-1 p-3" style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        
+        <div id="chatImagePreview" class="p-2 bg-light border-top shadow-sm" style="display: none; position: relative;">
+            <img id="chatImg" src="" style="max-height: 120px; border-radius: 5px;">
+            <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-2" onclick="removerPrintChat()"><i class="fas fa-times"></i></button>
+            <input type="hidden" id="chatBase64">
+        </div>
+
+        <div class="p-2 border-top bg-white">
+          <form id="formChat" onsubmit="enviarMensagem(event)" class="d-flex gap-2 align-items-center">
+            
+            <button type="button" class="btn btn-light text-secondary border-0" onclick="document.getElementById('chatInputFile').click()" title="Anexar Imagem">
+                <i class="fas fa-paperclip fs-5"></i>
+            </button>
+            <input type="file" id="chatInputFile" accept="image/*" style="display:none;" onchange="anexarImagemChat(event)">
+            
+            <input type="text" id="msgInput" class="form-control rounded-pill bg-light border-0 px-3" placeholder="Digite ou cole um print (Ctrl+V)..." autocomplete="off" />
+            
+            <button type="submit" class="btn btn-primary rounded-circle" style="width: 40px; height: 40px; padding: 0;">
+                <i class="fas fa-paper-plane"></i>
             </button>
           </form>
         </div>
@@ -1057,27 +1062,236 @@
         if (mousePressionado) return;
         fetch("/verificar_atualizacao?t=" + new Date().getTime()).then((r) => r.json()).then((data) => {
             if (versaoLocal === null) { versaoLocal = data.timestamp; lastChatId = data.chat_id; localLastCardId = data.last_card_id; carregarChat(); return; }
+            
+            // 1. Mensagens Novas (Agora o som toca certo e o botão pisca)
+            if (data.chat_id !== lastChatId) { 
+                lastChatId = data.chat_id; 
+                carregarChat(); 
+                playSound("msg"); // 🔔 Som de mensagem!
+                if (!document.getElementById("chatOffcanvas").classList.contains("show")) {
+                    document.getElementById("btnChatGlobal").classList.add("chat-notification"); 
+                }
+                
+                // NOVO: Atualiza a lista de bolinhas vermelhas se o chat estiver fechado
+                atualizarContatosChat();
+            }
+
+            // 2. Atualizações do Kanban (Não recarrega mais se o chat estiver aberto)
             if (data.timestamp > versaoLocal) {
               if (data.last_card_id > localLastCardId) { playSound("card"); localLastCardId = data.last_card_id; }
+              
               const modalAberto = document.querySelector(".modal.show");
-              if (!modalAberto) { setTimeout(() => location.reload(), 2500); } return;
+              const chatAberto = document.getElementById("chatOffcanvas").classList.contains("show");
+              
+              if (!modalAberto && !chatAberto) {
+                  versaoLocal = data.timestamp; // Salva que já atualizou pra não entrar em loop
+                  setTimeout(() => location.reload(), 1500); 
+              }
             }
-            if (data.chat_id > lastChatId) { lastChatId = data.chat_id; carregarChat(); playSound("msg"); if (!chatOffcanvas.classList.contains("show")) document.getElementById("btnChatGlobal").classList.add("chat-notification"); }
           }).catch((err) => console.error(err));
       }
       setInterval(checkUpdates, 2000);
 
-      function carregarChat() {
-        fetch("/chat/listar?t=" + new Date().getTime()).then((r) => r.json()).then((msgs) => {
-            let html = "";
-            if (msgs.length === 0) { html = '<div class="text-center text-muted small mt-5">Nenhuma mensagem.</div>'; } else {
-              msgs.forEach((m) => { let cls = m.eu_mesmo ? "msg-me" : "msg-other"; html += `<div class="msg-bubble ${cls}"><div class="msg-user">${m.usuario}</div>${m.texto}<div class="msg-time">${m.hora}</div></div>`; });
-            }
-            let box = document.getElementById("chatBox"); box.innerHTML = html; box.scrollTop = box.scrollHeight;
+      // --- LÓGICA DO CHAT 2.0 ---
+      let chatTipoAtual = 'global';
+      let chatDestinoAtual = '';
+
+      function atualizarContatosChat() {
+          fetch("/chat/contatos").then(r => r.json()).then(data => {
+              let optSetores = document.getElementById("optSetores");
+              let optUsuarios = document.getElementById("optUsuarios");
+              let select = document.getElementById('chatRoomSelect');
+              let selecaoAtual = select.value; // Salva o que o usuário está vendo para não fechar a sala
+
+              // Atualiza o Global
+              let globalOpt = select.querySelector('option[value="global"]');
+              if(globalOpt) globalOpt.innerText = data.nao_lidas && data.nao_lidas.global ? "🌍 Chat Global 🔴" : "🌍 Chat Global";
+
+              optSetores.innerHTML = ""; optUsuarios.innerHTML = "";
+              
+              if(data.setores) {
+                  data.setores.forEach(s => {
+                      let dot = (data.nao_lidas && data.nao_lidas.setores && data.nao_lidas.setores[s.id]) ? " 🔴" : "";
+                      optSetores.innerHTML += `<option value="setor_${s.id}">${s.nome}${dot}</option>`;
+                  });
+              }
+              
+              if(data.usuarios) {
+                  data.usuarios.forEach(u => {
+                      let dot = (data.nao_lidas && data.nao_lidas.direto && data.nao_lidas.direto[u]) ? " 🔴" : "";
+                      optUsuarios.innerHTML += `<option value="direto_${u}">${u}${dot}</option>`;
+                  });
+              }
+
+              // Restaura a sala selecionada apenas se ela ainda existir na lista
+              let optionExists = select.querySelector(`option[value="${selecaoAtual}"]`);
+              if(optionExists) select.value = selecaoAtual;
           });
       }
-      function enviarMensagem(e) { e.preventDefault(); let input = document.getElementById("msgInput"); let txt = input.value; if (!txt) return; fetch("/chat/enviar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: txt }), }).then(() => { input.value = ""; carregarChat(); }); }
-      function limparChat() { if (confirm("Apagar chat?")) { fetch("/chat/limpar", { method: "POST" }).then((r) => r.json()).then((data) => { if (data.success) { carregarChat(); } }); } }
+
+      // Carrega a lista de usuários ao abrir a barra lateral
+      document.getElementById('chatOffcanvas').addEventListener('show.bs.offcanvas', function () {
+          atualizarContatosChat(); // Puxa os contatos e as bolinhas vermelhas
+          carregarChat();
+      });
+
+      function mudarSalaChat() {
+          let val = document.getElementById('chatRoomSelect').value;
+          if(val === 'global') { chatTipoAtual = 'global'; chatDestinoAtual = ''; }
+          else if(val.startsWith('setor_')) { chatTipoAtual = 'setor'; chatDestinoAtual = val.split('_')[1]; }
+          else if(val.startsWith('direto_')) { chatTipoAtual = 'direto'; chatDestinoAtual = val.split('_')[1]; }
+          carregarChat();
+      }
+
+      function carregarChat() {
+          // Checa se o chat está aberto para enviar ao servidor
+          let isChatOpen = document.getElementById("chatOffcanvas").classList.contains("show");
+          
+          let url = `/chat/listar?tipo=${chatTipoAtual}&aberto=${isChatOpen}`;
+          if(chatTipoAtual === 'setor') url += `&setor_id=${chatDestinoAtual}`;
+          if(chatTipoAtual === 'direto') url += `&destinatario=${chatDestinoAtual}`;
+
+          fetch(url + "&t=" + new Date().getTime()).then(r => r.json()).then(msgs => {
+              let html = "";
+              if (msgs.length === 0) { 
+                  html = '<div class="text-center text-muted small mt-5 p-3 bg-white rounded shadow-sm">Nenhuma mensagem aqui.<br>Mande um "Oi"!</div>'; 
+              } else {
+                  msgs.forEach(m => {
+                      let cls = m.eu_mesmo ? "msg-me" : "msg-other";
+                      let check = m.eu_mesmo ? (m.lida ? '<span class="text-info ms-1"><i class="fas fa-check-double"></i></span>' : '<span class="text-secondary ms-1"><i class="fas fa-check"></i></span>') : '';
+                      let imgHtml = m.imagem_path ? `<div class="mt-1"><a href="/static/uploads/${m.imagem_path}" target="_blank"><img src="/static/uploads/${m.imagem_path}" class="img-fluid rounded border" style="max-height:180px;"></a></div>` : '';
+                      
+                      // --- NOVO: Lápis e Lixeira se a mensagem for sua ---
+                      let acoesHtml = m.eu_mesmo ? `
+                          <span class="ms-1" style="cursor:pointer; font-size:0.75rem; color:#888;" onclick="editarMensagem(${m.id})" title="Editar mensagem"><i class="fas fa-pencil-alt"></i></span>
+                          <span class="ms-2" style="cursor:pointer; font-size:0.75rem; color:#dc3545;" onclick="apagarMensagem(${m.id})" title="Apagar mensagem"><i class="fas fa-trash"></i></span>
+                      ` : '';
+
+                      html += `<div class="msg-bubble ${cls} shadow-sm" style="max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;">
+                                  ${m.eu_mesmo ? '' : `<div class="msg-user fw-bold text-primary mb-1" style="font-size:0.75rem;">${m.remetente}</div>`}
+                                  ${m.texto ? `<div id="texto-msg-${m.id}">${m.texto}</div>` : ''}
+                                  ${imgHtml}
+                                  <div class="msg-time mt-1 d-flex justify-content-end align-items-center" style="font-size:0.65rem; color:#888;">
+                                      ${acoesHtml} <span class="ms-auto">${m.hora} ${check}</span>
+                                  </div>
+                               </div>`;
+                  });
+              }
+              
+              let box = document.getElementById("chatBox"); 
+              // Impede que o chat pule lá pro final se a pessoa subiu a tela pra ler mensagens antigas
+              let isScrolledToBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
+              box.innerHTML = html; 
+              if (isScrolledToBottom) { box.scrollTop = box.scrollHeight; }
+              
+              // NOVO: Atualiza a bolinha vermelha (apaga ela se você acabou de ler)
+              if (isChatOpen) {
+                  atualizarContatosChat(); 
+              }
+          });
+      }
+
+      // Este bloco garante que os tiques azuis (✓✓) apareçam sem recarregar a tela
+      setInterval(() => {
+          if (document.getElementById("chatOffcanvas").classList.contains("show")) {
+              carregarChat();
+          }
+      }, 3000);
+
+      // 📎 Detectar "Ctrl+V" para colar prints
+      document.getElementById('msgInput').addEventListener('paste', function(e) {
+          if(e.clipboardData.items) {
+              for(let i=0; i<e.clipboardData.items.length; i++) {
+                  if(e.clipboardData.items[i].type.indexOf("image") !== -1) {
+                      let blob = e.clipboardData.items[i].getAsFile();
+                      let reader = new FileReader();
+                      reader.onload = function(event) {
+                          document.getElementById('chatImg').src = event.target.result;
+                          document.getElementById('chatBase64').value = event.target.result;
+                          document.getElementById('chatImagePreview').style.display = 'block';
+                      };
+                      reader.readAsDataURL(blob);
+                  }
+              }
+          }
+      });
+
+      // 📎 Upload via botão clipe
+      function anexarImagemChat(event) {
+          if(event.target.files && event.target.files[0]) {
+              let reader = new FileReader();
+              reader.onload = function(e) {
+                  document.getElementById('chatImg').src = e.target.result;
+                  document.getElementById('chatBase64').value = e.target.result;
+                  document.getElementById('chatImagePreview').style.display = 'block';
+              };
+              reader.readAsDataURL(event.target.files[0]);
+          }
+      }
+
+      function removerPrintChat() {
+          document.getElementById('chatImg').src = "";
+          document.getElementById('chatBase64').value = "";
+          document.getElementById('chatImagePreview').style.display = 'none';
+          document.getElementById('chatInputFile').value = "";
+      }
+
+      function enviarMensagem(e) {
+          e.preventDefault();
+          let input = document.getElementById("msgInput");
+          let txt = input.value;
+          let img = document.getElementById("chatBase64").value;
+          
+          if (!txt && !img) return;
+
+          let payload = { texto: txt, imagem_base64: img, tipo_chat: chatTipoAtual };
+          if(chatTipoAtual === 'setor') payload.setor_id = chatDestinoAtual;
+          if(chatTipoAtual === 'direto') payload.destinatario = chatDestinoAtual;
+
+          fetch("/chat/enviar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+          .then(() => {
+              input.value = "";
+              removerPrintChat();
+              carregarChat();
+          });
+      }
+      
+      function limparChat() { 
+          // Agora envia via JSON qual chat o Admin quer apagar
+          if (confirm("Apagar mensagens APENAS desta conversa atual?")) { 
+              fetch("/chat/limpar", { 
+                  method: "POST", 
+                  headers: { "Content-Type": "application/json" }, 
+                  body: JSON.stringify({ tipo: chatTipoAtual, dest: chatDestinoAtual }) 
+              }).then((r) => r.json()).then((data) => { 
+                  if (data.success) { carregarChat(); } 
+              }); 
+          } 
+      }
+
+      // --- NOVAS FUNÇÕES: Apagar e Editar Mensagem Individual ---
+      function apagarMensagem(id) {
+          if (confirm("Deseja realmente apagar esta mensagem?")) {
+              fetch("/chat/excluir_msg/" + id, { method: "POST" })
+              .then(() => carregarChat());
+          }
+      }
+
+      function editarMensagem(id) {
+          let textoAtualEl = document.getElementById("texto-msg-" + id);
+          if (!textoAtualEl) return;
+          
+          let textoAntigo = textoAtualEl.innerText.replace(" (editado)", ""); // Remove a tag se já foi editado
+          let novoTexto = prompt("Edite sua mensagem:", textoAntigo);
+          
+          if (novoTexto && novoTexto.trim() !== "" && novoTexto !== textoAntigo) {
+              fetch("/chat/editar_msg/" + id, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ texto: novoTexto })
+              }).then(() => carregarChat());
+          }
+      }
     </script>
   </body>
 </html>
