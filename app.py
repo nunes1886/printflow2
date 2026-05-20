@@ -71,7 +71,7 @@ class Status(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(50), nullable=False)
     cor = db.Column(db.String(20), default='#CCCCCC')
-    ordem = db.Column(db.Integer, default=0) # Nova coluna para ordenação
+    ordem = db.Column(db.Integer, default=0) 
 
 class Card(db.Model):
     __tablename__ = 'cards'
@@ -116,6 +116,7 @@ class Material(db.Model):
     __tablename__ = 'materiais'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
+    categoria = db.Column(db.String(50), default='Geral / Outros')
     unidade = db.Column(db.String(20), default='Unid')
     quantidade = db.Column(db.Float, default=0.0)
     minimo = db.Column(db.Float, default=5.0)
@@ -169,13 +170,10 @@ def notificar_status_n8n(card, nome_coluna):
 @app.route('/verificar_atualizacao')
 @login_required
 def verificar_atualizacao():
-    # Filtra a última mensagem de acordo com as permissões de quem está logado
     if current_user.is_admin:
         ultimo_msg = Mensagem.query.order_by(Mensagem.id.desc()).first()
     else:
-        # Pega a lista de IDs dos setores que este usuário tem acesso
         ids_permitidos = [s.id for s in current_user.acessos]
-        
         ultimo_msg = Mensagem.query.filter(
             (Mensagem.tipo_chat == 'global') |
             ((Mensagem.tipo_chat == 'direto') & ((Mensagem.remetente == current_user.username) | (Mensagem.destinatario == current_user.username))) |
@@ -184,12 +182,20 @@ def verificar_atualizacao():
         
     msg_id = ultimo_msg.id if ultimo_msg else 0
     
+    last_msg_texto = ultimo_msg.texto if ultimo_msg else ""
+    last_msg_remetente = ultimo_msg.remetente if ultimo_msg else ""
+    
     last_card = Card.query.order_by(Card.id.desc()).first()
     card_id = last_card.id if last_card else 0
     
-    return jsonify({'timestamp': ULTIMA_ATUALIZACAO, 'chat_id': msg_id, 'last_card_id': card_id})
+    return jsonify({
+        'timestamp': ULTIMA_ATUALIZACAO, 
+        'chat_id': msg_id, 
+        'last_card_id': card_id,
+        'last_msg_texto': last_msg_texto,         
+        'last_msg_remetente': last_msg_remetente  
+    })
 
-# --- NOVAS ROTAS DO CHAT 2.0 ---
 @app.route('/chat/contatos')
 @login_required
 def chat_contatos():
@@ -203,19 +209,15 @@ def chat_contatos():
         
     setores = [{'id': s.id, 'nome': s.nome} for s in setores_permitidos]
 
-    # --- NOVO: VERIFICA MENSAGENS NÃO LIDAS ---
     nao_lidas = {'global': False, 'setores': {}, 'direto': {}}
     
-    # Verifica o Chat Global
     if Mensagem.query.filter_by(tipo_chat='global', lida=False).filter(Mensagem.remetente != current_user.username).first():
         nao_lidas['global'] = True
         
-    # Verifica os Setores/Grupos
     for s in setores_permitidos:
         if Mensagem.query.filter_by(tipo_chat='setor', setor_id=s.id, lida=False).filter(Mensagem.remetente != current_user.username).first():
             nao_lidas['setores'][str(s.id)] = True
             
-    # Verifica as Mensagens Diretas
     for u in usuarios:
         if Mensagem.query.filter_by(tipo_chat='direto', remetente=u, destinatario=current_user.username, lida=False).first():
             nao_lidas['direto'][u] = True
@@ -233,12 +235,10 @@ def enviar_mensagem():
     
     if not texto and not img_base64: return jsonify({'error': 'Vazio'}), 400
     
-    # --- TRAVA DE SEGURANÇA NO ENVIO ---
     if tipo_chat == 'setor' and not current_user.is_admin:
         ids_permitidos = [str(s.id) for s in current_user.acessos]
         if str(setor_id) not in ids_permitidos:
             return jsonify({'error': 'Sem permissão para este setor'}), 403
-    # -----------------------------------
     
     caminho_img = salvar_imagem_base64(img_base64) if img_base64 else None
     
@@ -273,19 +273,17 @@ def listar_mensagens():
             db.and_(Mensagem.remetente == dest, Mensagem.destinatario == current_user.username)
         ))
     elif tipo == 'setor':
-        # --- TRAVA DE SEGURANÇA NA LEITURA ---
         if not current_user.is_admin:
             ids_permitidos = [str(s.id) for s in current_user.acessos]
             if str(setor) not in ids_permitidos:
-                return jsonify([]) # Bloqueia a leitura retornando vazio
-        # -------------------------------------
+                return jsonify([]) 
         query = query.filter_by(tipo_chat='setor', setor_id=setor)
         
-    msgs = query.order_by(Mensagem.id.asc()).limit(50).all()
+    msgs = query.order_by(Mensagem.id.desc()).limit(50).all()
+    msgs.reverse()
     
     alterou = False
     
-    # SÓ MARCA COMO LIDA SE ESTIVER COM A GAVETA ABERTA
     if chat_aberto:
         for m in msgs:
             if m.remetente != current_user.username and not m.lida:
@@ -321,7 +319,7 @@ def logout():
 @login_required
 def index():
     todos_setores = Setor.query.order_by(Setor.ordem).all()
-    lista_status = Status.query.order_by(Status.ordem).all() # Atualizado para ordenar
+    lista_status = Status.query.order_by(Status.ordem).all() 
     setores_visiveis = []
     
     if current_user.is_admin:
@@ -333,7 +331,6 @@ def index():
         else:
             setores_visiveis = todos_setores
 
-    # --- NOVO FILTRO: Esconde o setor do Kanban se o interruptor estiver desligado ---
     setores_visiveis = [s for s in setores_visiveis if s.mostrar_no_kanban]
 
     for setor in setores_visiveis:
@@ -428,9 +425,24 @@ def adicionar():
     if not current_user.is_admin: 
         return "Negado", 403
     img = salvar_imagem_base64(request.form.get('imagem_base64'))
+    
     s = Setor.query.order_by(Setor.ordem).first()
-    st = Status.query.order_by(Status.ordem).first()
-    c = Card(titulo=request.form.get('titulo'), cliente=request.form.get('cliente'), descricao=request.form.get('descricao'), data_criacao=datetime.now().strftime("%d/%m %H:%M"), setor_id=s.id, status_id=st.id, imagem_path=img, created_by=current_user.username, prazo=request.form.get('prazo'))
+    st = Status.query.filter(Status.nome.ilike('Pendente')).first()
+    
+    if not st:
+        st = Status.query.order_by(Status.ordem).first()
+        
+    c = Card(
+        titulo=request.form.get('titulo'), 
+        cliente=request.form.get('cliente'), 
+        descricao=request.form.get('descricao'), 
+        data_criacao=datetime.now().strftime("%d/%m %H:%M"), 
+        setor_id=s.id, 
+        status_id=st.id, 
+        imagem_path=img, 
+        created_by=current_user.username, 
+        prazo=request.form.get('prazo')
+    )
     db.session.add(c)
     db.session.commit()
     atualizar_versao()
@@ -512,7 +524,7 @@ def configuracoes():
     if not current_user.is_admin: 
         return redirect(url_for('index'))
     setores = Setor.query.order_by(Setor.ordem).all()
-    lista_status = Status.query.order_by(Status.ordem).all() # Atualizado para ordenar
+    lista_status = Status.query.order_by(Status.ordem).all() 
     upload_folder = os.path.join(app.root_path, 'static', 'uploads')
     total_size = 0
     total_files = 0
@@ -532,7 +544,6 @@ def adicionar_setor():
         return "Negado", 403
     u = Setor.query.order_by(Setor.ordem.desc()).first()
     
-    # --- LÊ O CHECKBOX DO HTML ---
     mostrar = request.form.get('mostrar_no_kanban') == 'on'
     
     novo_setor = Setor(nome=request.form.get('nome'), ordem=(u.ordem + 1) if u else 1, mostrar_no_kanban=mostrar)
@@ -551,9 +562,6 @@ def excluir_setor(id):
         atualizar_versao()
     return redirect(url_for('configuracoes'))
 
-# ==========================================
-# ROTAS NOVAS DE EDIÇÃO - COLUNAS E STATUS
-# ==========================================
 @app.route('/setor/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_setor_config(id):
@@ -577,14 +585,11 @@ def reordenar_setor(id, direcao):
         return redirect(url_for('configuracoes'))
     
     if direcao == 'subir':
-        # Pega a coluna que está imediatamente antes
         s_alvo = Setor.query.filter(Setor.ordem < s_atual.ordem).order_by(Setor.ordem.desc()).first()
     else:
-        # Pega a coluna que está imediatamente depois
         s_alvo = Setor.query.filter(Setor.ordem > s_atual.ordem).order_by(Setor.ordem.asc()).first()
         
     if s_alvo:
-        # Inverte os valores de ordem
         s_atual.ordem, s_alvo.ordem = s_alvo.ordem, s_atual.ordem
         db.session.commit()
         atualizar_versao()
@@ -614,7 +619,6 @@ def ordenar_status_alfa():
     db.session.commit()
     atualizar_versao()
     return redirect(url_for('configuracoes'))
-# ==========================================
 
 @app.route('/status/adicionar', methods=['POST'])
 @login_required
@@ -666,7 +670,6 @@ def limpar_chat():
 @login_required
 def excluir_msg(id):
     msg = Mensagem.query.get(id)
-    # Apenas o dono da mensagem (ou o admin) pode apagar
     if msg and (msg.remetente == current_user.username or current_user.is_admin):
         db.session.delete(msg)
         db.session.commit()
@@ -680,7 +683,6 @@ def editar_msg(id):
     data = request.get_json()
     novo_texto = data.get('texto')
     
-    # Apenas o dono da mensagem pode editar
     if msg and msg.remetente == current_user.username and novo_texto:
         msg.texto = novo_texto + " (editado)"
         db.session.commit()
@@ -738,13 +740,50 @@ def limpar_imagens():
     mb_liberados = round(espaco_liberado / (1024 * 1024), 2)
     return jsonify({'success': True, 'qtd': imagens_apagadas, 'mb': mb_liberados})
 
+# --- CORREÇÃO DO DASHBOARD (Filtro de datas e cards arquivados) ---
 @app.route('/dashboard')
 @login_required
 def dashboard():
     if not current_user.is_admin: 
         return redirect(url_for('index'))
     
-    all_cards = Card.query.filter_by(is_archived=False).all()
+    start_date = request.args.get('start', '')
+    end_date = request.args.get('end', '')
+    
+    # Busca todos os cards para o relatório
+    all_cards = Card.query.all()
+
+    if start_date or end_date:
+        filtered_cards = []
+        current_year = datetime.now().year
+        
+        s_date = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        e_date = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+        for c in all_cards:
+            if c.data_criacao:
+                try:
+                    # Converte a data salva (dd/mm HH:MM) para formato completo considerando o ano atual
+                    card_date = datetime.strptime(f"{c.data_criacao} {current_year}", "%d/%m %H:%M %Y").date()
+                    keep = True
+                    if s_date and card_date < s_date:
+                        keep = False
+                    if e_date and card_date > e_date:
+                        keep = False
+                    
+                    if keep:
+                        filtered_cards.append(c)
+                except:
+                    # Se falhar a conversão (formato antigo/inválido), mantém o card
+                    filtered_cards.append(c)
+            else:
+                filtered_cards.append(c)
+                
+        all_cards = filtered_cards
+    else:
+        # Sem filtro de datas, mostra apenas os ativos (não arquivados) para refletir a tela principal
+        all_cards = [c for c in all_cards if not c.is_archived]
+
     all_status = Status.query.all()
     all_setores = Setor.query.order_by(Setor.ordem).all()
 
@@ -755,9 +794,10 @@ def dashboard():
 
     for c in all_cards:
         if c.prazo:
-            if c.prazo < hoje_str: 
+            # Conta atrasados e para hoje baseando-se no prazo (mesmo para os filtrados)
+            if c.prazo < hoje_str and not c.is_archived: 
                 atrasados += 1
-            elif c.prazo == hoje_str: 
+            elif c.prazo == hoje_str and not c.is_archived: 
                 para_hoje += 1
 
     labels_status = []
@@ -765,7 +805,7 @@ def dashboard():
     colors_status = []
 
     for st in all_status:
-        count = Card.query.filter_by(status_id=st.id, is_archived=False).count()
+        count = sum(1 for c in all_cards if c.status_id == st.id)
         if count > 0:
             labels_status.append(st.nome)
             values_status.append(count)
@@ -774,7 +814,7 @@ def dashboard():
     labels_setor = []
     values_setor = []
     for s in all_setores:
-        count = len([c for c in s.cards if not c.is_archived])
+        count = sum(1 for c in all_cards if c.setor_id == s.id)
         labels_setor.append(s.nome)
         values_setor.append(count)
 
@@ -787,7 +827,9 @@ def dashboard():
                            values_status=values_status,
                            colors_status=colors_status, 
                            labels_setor=labels_setor, 
-                           values_setor=values_setor)
+                           values_setor=values_setor,
+                           start_date=start_date,
+                           end_date=end_date)
 
 @app.route('/estoque')
 @login_required
@@ -796,7 +838,7 @@ def estoque():
         flash('Acesso negado ao estoque.')
         return redirect(url_for('index'))
         
-    materiais = Material.query.order_by(Material.nome).all()
+    materiais = Material.query.order_by(Material.categoria, Material.nome).all()
     return render_template('estoque.html', materiais=materiais, user=current_user)
 
 @app.route('/estoque/adicionar_item', methods=['POST'])
@@ -804,7 +846,14 @@ def estoque():
 def adicionar_item_estoque():
     if not current_user.is_admin: 
         return "Negado", 403
-    novo = Material(nome=request.form.get('nome'), unidade=request.form.get('unidade'), quantidade=float(request.form.get('quantidade')), minimo=float(request.form.get('minimo')))
+        
+    novo = Material(
+        nome=request.form.get('nome'), 
+        categoria=request.form.get('categoria', 'Geral / Outros'),
+        unidade=request.form.get('unidade'), 
+        quantidade=float(request.form.get('quantidade')), 
+        minimo=float(request.form.get('minimo'))
+    )
     db.session.add(novo)
     db.session.add(Movimentacao(material=novo, tipo='ENTRADA', quantidade=novo.quantidade, usuario=current_user.username))
     db.session.commit()

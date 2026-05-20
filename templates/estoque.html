@@ -20,100 +20,65 @@
 
     <style>
       body {
-        background-color: #f0f2f5;
+        background-color: #f4f5f7; /* Cor mais suave, padrão do sistema */
         font-family: "Segoe UI", sans-serif;
       }
-      .card-estoque {
-        background: white;
-        border: none;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-        transition: transform 0.2s;
-        border-left: 6px solid #2ecc71;
-      }
-      .card-estoque:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-      }
-      .card-estoque.alerta {
-        border-left-color: #e74c3c;
-        background: #fff5f5;
-      }
-      .nome-item {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #2d3436;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .unidade-badge {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        background: #dfe6e9;
-        padding: 2px 8px;
-        border-radius: 4px;
-      }
-      .numero-qtd {
-        font-family: "Inter", sans-serif;
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #2d3436;
-        line-height: 1.2;
-      }
-      .alerta .numero-qtd {
-        color: #e74c3c;
-      }
-      .btn-circle {
-        width: 45px;
-        height: 45px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        transition: all 0.2s;
-        border: 2px solid transparent;
-      }
-      .btn-menos {
-        background: #fff0f0;
-        color: #e74c3c;
-      }
-      .btn-mais {
-        background: #f0fff4;
-        color: #2ecc71;
-      }
+      
       .search-bar-container {
         position: sticky;
         top: 60px;
         z-index: 90;
-        background: #f0f2f5;
+        background: #f4f5f7;
         padding: 15px 0;
       }
+      
       .search-input {
         border-radius: 20px;
         border: 1px solid #ddd;
         padding-left: 40px;
       }
+      
       .search-icon {
         position: absolute;
         left: 25px;
         top: 25px;
         color: #aaa;
       }
-      @keyframes pulse-red {
-        0% {
-          box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
-        }
-        70% {
-          box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
-        }
-        100% {
-          box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
-        }
+
+      /* Estilos da nova tabela */
+      .tabela-estoque th {
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        color: #6c757d;
+        letter-spacing: 0.5px;
       }
+      
+      .numero-qtd {
+        font-family: "Inter", sans-serif;
+        font-weight: 700;
+      }
+
+      .btn-circle-sm {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: all 0.2s;
+      }
+      
+      .btn-circle-sm:hover {
+        transform: scale(1.1);
+      }
+
+      @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+      }
+      
       .badge-alerta {
         background-color: #e74c3c;
         color: white;
@@ -126,25 +91,14 @@
     </style>
   </head>
   <body>
-    <nav
-      class="navbar navbar-dark bg-primary px-3 shadow-sm sticky-top"
-      style="height: 60px"
-    >
+    <nav class="navbar navbar-dark bg-primary px-3 shadow-sm sticky-top" style="height: 60px">
       <div class="d-flex align-items-center">
-        <a href="/" class="btn btn-outline-light btn-sm me-3 border-0"
-          ><i class="fas fa-arrow-left"></i
-        ></a>
-        <span class="navbar-brand fw-bold mb-0 h1"
-          ><i class="fas fa-boxes me-2"></i>Estoque</span
-        >
+        <a href="/" class="btn btn-outline-light btn-sm me-3 border-0"><i class="fas fa-arrow-left"></i></a>
+        <span class="navbar-brand fw-bold mb-0 h1"><i class="fas fa-boxes me-2"></i>Controle de Estoque</span>
       </div>
       {% if user.is_admin %}
-      <button
-        class="btn btn-light text-primary fw-bold btn-sm shadow-sm"
-        data-bs-toggle="modal"
-        data-bs-target="#modalNovoItem"
-      >
-        <i class="fas fa-plus"></i> <span class="d-none d-sm-inline">Novo</span>
+      <button class="btn btn-light text-primary fw-bold btn-sm shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNovoItem">
+        <i class="fas fa-plus"></i> <span class="d-none d-sm-inline">Novo Item</span>
       </button>
       {% endif %}
     </nav>
@@ -153,107 +107,89 @@
       <div class="row search-bar-container">
         <div class="col-12 position-relative">
           <i class="fas fa-search search-icon"></i>
-          <input
-            type="text"
-            id="filtroEstoque"
-            class="form-control search-input"
-            placeholder="Buscar material..."
-            onkeyup="filtrarCards()"
-          />
+          <input type="text" id="filtroEstoque" class="form-control search-input shadow-sm" placeholder="Buscar material..." onkeyup="filtrarTabela()" />
         </div>
       </div>
 
-      <div class="row" id="gridCards">
-        {% for m in materiais %}
-        <div
-          class="col-12 col-md-6 col-lg-4 item-col"
-          data-nome="{{ m.nome | lower }}"
-        >
-          <div
-            class="card-estoque {{ 'alerta' if m.quantidade <= m.minimo else '' }}"
-          >
-            <div class="d-flex justify-content-between align-items-start">
-              <div>
-                <div class="nome-item">{{ m.nome }}</div>
-                <span class="badge bg-light text-dark border"
-                  >{{ m.unidade }}</span
-                >
-                {% if m.quantidade <= m.minimo %}
-                <span class="badge-alerta ms-2">BAIXO</span>
-                {% endif %}
-              </div>
-              <div class="dropdown">
-                <button class="btn btn-sm text-muted" data-bs-toggle="dropdown">
-                  <i class="fas fa-ellipsis-v"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li>
-                    <a
-                      class="dropdown-item"
-                      href="#"
-                      onclick="verHistorico('{{ m.id }}', '{{ m.nome }}')"
-                      ><i class="fas fa-history me-2"></i>Histórico</a
-                    >
-                  </li>
-                  {% if user.is_admin %}
-                  <li><hr class="dropdown-divider" /></li>
-                  <li>
-                    <form
-                      action="/estoque/excluir_item/{{ m.id }}"
-                      method="POST"
-                      onsubmit="return confirm('Excluir?');"
-                    >
-                      <button class="dropdown-item text-danger">
-                        <i class="fas fa-trash me-2"></i>Excluir
-                      </button>
-                    </form>
-                  </li>
+      <!-- NOVO FORMATO EM TABELA -->
+      <div class="table-responsive bg-white rounded shadow-sm border mt-2">
+        <table class="table table-hover align-middle mb-0 tabela-estoque">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-4">Material / Insumo</th>
+              <th>Unid.</th>
+              <th class="text-center">Mínimo</th>
+              <th class="text-center">Em Estoque</th>
+              <th class="text-center">Movimentar</th>
+              <th class="text-end pe-4">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaEstoque">
+            {% for m in materiais %}
+            <tr class="item-row" data-nome="{{ m.nome | lower }}">
+              <td class="fw-bold text-dark ps-4">
+                  {{ m.nome }}
+                  {% if m.quantidade <= m.minimo %}
+                  <span class="badge-alerta ms-2 d-inline-block d-md-none">BAIXO</span> <!-- Aparece do lado no celular -->
                   {% endif %}
-                </ul>
-              </div>
-            </div>
-
-            <div
-              class="d-flex justify-content-between align-items-center mt-3 mb-2"
-            >
-              <button
-                class="btn-circle btn-menos"
-                onclick="abrirMovimento('{{ m.id }}', '{{ m.nome }}', 'SAIDA')"
-              >
-                <i class="fas fa-minus"></i>
-              </button>
-
-              <div class="text-center">
-                <div class="numero-qtd">
-                  {{ m.quantidade | int if m.quantidade.is_integer() else
-                  m.quantidade }}
-                </div>
-                <small class="text-muted" style="font-size: 0.75rem"
-                  >Min: {{ m.minimo }}</small
-                >
-              </div>
-
-              {% if user.is_admin %}
-              <button
-                class="btn-circle btn-mais"
-                onclick="abrirMovimento('{{ m.id }}', '{{ m.nome }}', 'ENTRADA')"
-              >
-                <i class="fas fa-plus"></i>
-              </button>
-              {% else %}
-              <div style="width: 45px"></div>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-        {% else %}
-        <div class="col-12 text-center mt-5 text-muted">
-          <p>Nenhum material.</p>
-        </div>
-        {% endfor %}
+              </td>
+              <td><span class="badge bg-secondary opacity-75">{{ m.unidade }}</span></td>
+              <td class="text-center text-muted">{{ m.minimo | int if m.minimo.is_integer() else m.minimo }}</td>
+              <td class="text-center">
+                <span class="numero-qtd fs-5 {{ 'text-danger' if m.quantidade <= m.minimo else 'text-success' }}">
+                  {{ m.quantidade | int if m.quantidade.is_integer() else m.quantidade }}
+                </span>
+                {% if m.quantidade <= m.minimo %}
+                <br><span class="badge-alerta mt-1 d-none d-md-inline-block">ESTOQUE BAIXO</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <button class="btn btn-outline-danger btn-circle-sm me-1 shadow-sm" onclick="abrirMovimento('{{ m.id }}', '{{ m.nome }}', 'SAIDA')" title="Retirar do Estoque">
+                  <i class="fas fa-minus"></i>
+                </button>
+                {% if user.is_admin %}
+                <button class="btn btn-outline-success btn-circle-sm shadow-sm" onclick="abrirMovimento('{{ m.id }}', '{{ m.nome }}', 'ENTRADA')" title="Adicionar ao Estoque">
+                  <i class="fas fa-plus"></i>
+                </button>
+                {% endif %}
+              </td>
+              <td class="text-end pe-4">
+                  <div class="dropdown">
+                    <button class="btn btn-sm btn-light border" data-bs-toggle="dropdown">
+                      <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow">
+                      <li>
+                        <a class="dropdown-item" href="#" onclick="verHistorico('{{ m.id }}', '{{ m.nome }}')"><i class="fas fa-history me-2 text-primary"></i>Ver Histórico</a>
+                      </li>
+                      {% if user.is_admin %}
+                      <li><hr class="dropdown-divider" /></li>
+                      <li>
+                        <form action="/estoque/excluir_item/{{ m.id }}" method="POST" onsubmit="return confirm('ATENÇÃO: Deseja realmente excluir este material permanentemente?');">
+                          <button class="dropdown-item text-danger fw-bold">
+                            <i class="fas fa-trash-alt me-2"></i>Excluir Item
+                          </button>
+                        </form>
+                      </li>
+                      {% endif %}
+                    </ul>
+                  </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="text-center text-muted py-5">
+                    <i class="fas fa-box-open fs-1 mb-3 opacity-25"></i><br>
+                    Nenhum material cadastrado no estoque ainda.
+                </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
 
+    <!-- MODAL DE MOVIMENTAÇÃO (Mantido igual) -->
     <div class="modal fade" id="modalMovimento" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border-0 shadow-lg">
@@ -262,35 +198,16 @@
               <input type="hidden" name="id" id="movId" />
               <input type="hidden" name="tipo" id="movTipo" />
 
-              <h5 id="nomeItemMov" class="fw-bold mb-1">...</h5>
+              <h5 id="nomeItemMov" class="fw-bold mb-1 text-primary">...</h5>
               <p id="textoTipo" class="text-muted small mb-3">...</p>
 
-              <div class="input-group input-group-lg mb-3">
-                <input
-                  type="number"
-                  name="quantidade"
-                  class="form-control text-center fw-bold"
-                  value="1"
-                  step="0.1"
-                  required
-                />
+              <div class="input-group input-group-lg mb-3 shadow-sm">
+                <input type="number" name="quantidade" class="form-control text-center fw-bold" value="1" step="0.1" required />
               </div>
 
               <div class="mb-3 text-start" id="divDestino">
-                <label class="small fw-bold text-muted mb-1" id="labelDestino"
-                  >Destino / Origem</label
-                >
-
-                <input
-                  type="text"
-                  name="destino"
-                  id="inputDestino"
-                  class="form-control"
-                  list="sugestoesDestino"
-                  placeholder="Digite ou escolha..."
-                  autocomplete="off"
-                />
-
+                <label class="small fw-bold text-muted mb-1" id="labelDestino">Destino / Origem</label>
+                <input type="text" name="destino" id="inputDestino" class="form-control" list="sugestoesDestino" placeholder="Digite ou escolha..." autocomplete="off" />
                 <datalist id="sugestoesDestino">
                   <option value="Impressora 01"></option>
                   <option value="Impressora 02"></option>
@@ -302,40 +219,31 @@
                 </datalist>
               </div>
 
-              <button
-                type="submit"
-                id="btnConfirmar"
-                class="btn w-100 fw-bold py-2"
-              >
-                CONFIRMAR
-              </button>
+              <button type="submit" id="btnConfirmar" class="btn w-100 fw-bold py-2 shadow">CONFIRMAR</button>
             </div>
           </form>
         </div>
       </div>
     </div>
 
+    <!-- MODAL DE NOVO ITEM -->
     <div class="modal fade" id="modalNovoItem" tabindex="-1">
       <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content border-0 shadow">
           <form action="/estoque/adicionar_item" method="POST">
-            <div class="modal-header">
-              <h5 class="modal-title">Novo Material</h5>
-              <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-              ></button>
+            <div class="modal-header bg-primary text-white border-0">
+              <h5 class="modal-title fw-bold"><i class="fas fa-box mt-1 me-2"></i>Novo Material</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-              <div class="mb-2">
-                <label>Nome</label
-                ><input type="text" name="nome" class="form-control" required />
+            <div class="modal-body bg-light">
+              <div class="mb-3">
+                <label class="fw-bold small text-muted">Nome do Material</label>
+                <input type="text" name="nome" class="form-control shadow-sm" placeholder="Ex: Lona Brilho 440g" required />
               </div>
-              <div class="row mb-2">
+              <div class="row mb-3">
                 <div class="col-6">
-                  <label>Unidade</label
-                  ><select name="unidade" class="form-select">
+                  <label class="fw-bold small text-muted">Unidade de Medida</label>
+                  <select name="unidade" class="form-select shadow-sm">
                     <option>Rolos</option>
                     <option>Metros</option>
                     <option>Unid</option>
@@ -344,48 +252,30 @@
                   </select>
                 </div>
                 <div class="col-6">
-                  <label>Mínimo</label
-                  ><input
-                    type="number"
-                    name="minimo"
-                    class="form-control"
-                    value="2"
-                    step="0.1"
-                  />
+                  <label class="fw-bold small text-muted">Alerta de Mínimo</label>
+                  <input type="number" name="minimo" class="form-control shadow-sm" value="2" step="0.1" title="O sistema avisará quando o estoque chegar neste número" />
                 </div>
               </div>
               <div class="mb-2">
-                <label>Qtd Inicial</label
-                ><input
-                  type="number"
-                  name="quantidade"
-                  class="form-control"
-                  value="0"
-                  step="0.1"
-                  required
-                />
+                <label class="fw-bold small text-muted">Quantidade Inicial (Agora)</label>
+                <input type="number" name="quantidade" class="form-control shadow-sm" value="0" step="0.1" required />
               </div>
             </div>
-            <div class="modal-footer">
-              <button type="submit" class="btn btn-primary w-100">
-                Salvar
-              </button>
+            <div class="modal-footer bg-light border-0">
+              <button type="submit" class="btn btn-primary w-100 fw-bold shadow">Salvar Material</button>
             </div>
           </form>
         </div>
       </div>
     </div>
 
+    <!-- MODAL DE HISTÓRICO -->
     <div class="modal fade" id="modalHistorico" tabindex="-1">
       <div class="modal-dialog modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Histórico</h5>
-            <button
-              type="button"
-              class="btn-close"
-              data-bs-dismiss="modal"
-            ></button>
+        <div class="modal-content border-0 shadow">
+          <div class="modal-header bg-secondary text-white border-0">
+            <h5 class="modal-title fw-bold"><i class="fas fa-history me-2"></i>Histórico de Movimentações</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body p-0">
             <ul class="list-group list-group-flush" id="listaHistorico"></ul>
@@ -396,12 +286,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const modalMov = new bootstrap.Modal(
-        document.getElementById("modalMovimento"),
-      );
-      const modalHist = new bootstrap.Modal(
-        document.getElementById("modalHistorico"),
-      );
+      const modalMov = new bootstrap.Modal(document.getElementById("modalMovimento"));
+      const modalHist = new bootstrap.Modal(document.getElementById("modalHistorico"));
 
       function abrirMovimento(id, nome, tipo) {
         document.getElementById("movId").value = id;
@@ -413,38 +299,33 @@
         const inputDestino = document.getElementById("inputDestino");
         const labelDestino = document.getElementById("labelDestino");
 
-        // Limpa o campo anterior
         inputDestino.value = "";
 
         if (tipo === "ENTRADA") {
           texto.innerText = "Adicionar ao estoque";
-          btn.className = "btn btn-success w-100 fw-bold py-2";
+          btn.className = "btn btn-success w-100 fw-bold py-2 shadow";
           labelDestino.innerText = "Fornecedor (Opcional)";
           inputDestino.placeholder = "Ex: Mercado Livre, Papelaria...";
         } else {
           texto.innerText = "Retirar do estoque";
-          btn.className = "btn btn-danger w-100 fw-bold py-2";
+          btn.className = "btn btn-danger w-100 fw-bold py-2 shadow";
           labelDestino.innerText = "Para onde vai?";
           inputDestino.placeholder = "Ex: Impressão, Acabamento...";
         }
         modalMov.show();
       }
 
-      function filtrarCards() {
-        const termo = document
-          .getElementById("filtroEstoque")
-          .value.toLowerCase();
-        document.querySelectorAll(".item-col").forEach((col) => {
-          col.style.display = col.getAttribute("data-nome").includes(termo)
-            ? "block"
-            : "none";
+      // Função de busca adaptada para a nova tabela
+      function filtrarTabela() {
+        const termo = document.getElementById("filtroEstoque").value.toLowerCase();
+        document.querySelectorAll(".item-row").forEach((row) => {
+          row.style.display = row.getAttribute("data-nome").includes(termo) ? "" : "none";
         });
       }
 
       function verHistorico(id, nome) {
         const lista = document.getElementById("listaHistorico");
-        lista.innerHTML =
-          '<li class="list-group-item text-center py-4"><div class="spinner-border text-primary"></div></li>';
+        lista.innerHTML = '<li class="list-group-item text-center py-4"><div class="spinner-border text-primary"></div></li>';
         modalHist.show();
 
         fetch("/estoque/historico/" + id)
@@ -452,23 +333,21 @@
           .then((data) => {
             lista.innerHTML = "";
             if (data.length === 0) {
-              lista.innerHTML =
-                '<li class="list-group-item text-center text-muted py-4">Sem movimentações</li>';
+              lista.innerHTML = '<li class="list-group-item text-center text-muted py-4"><i class="fas fa-box-open fs-3 mb-2 opacity-25"></i><br>Sem movimentações registradas</li>';
               return;
             }
             data.forEach((m) => {
               const cor = m.tipo === "ENTRADA" ? "text-success" : "text-danger";
-              const icon =
-                m.tipo === "ENTRADA" ? "fa-arrow-down" : "fa-arrow-up";
+              const icon = m.tipo === "ENTRADA" ? "fa-arrow-down" : "fa-arrow-up";
               lista.innerHTML += `
-                            <li class="list-group-item">
+                            <li class="list-group-item border-bottom">
                                 <div class="d-flex justify-content-between">
                                     <div><strong class="${cor}"><i class="fas ${icon}"></i> ${m.tipo}</strong></div>
-                                    <div class="fw-bold ${cor}">${m.tipo === "ENTRADA" ? "+" : "-"}${m.qtd}</div>
+                                    <div class="fw-bold ${cor} fs-5">${m.tipo === "ENTRADA" ? "+" : "-"}${m.qtd}</div>
                                 </div>
-                                <div class="small text-muted mt-1">
-                                    <i class="far fa-user me-1"></i> ${m.usuario} <br>
-                                    <small>${m.data}</small>
+                                <div class="small text-muted mt-1 d-flex justify-content-between">
+                                    <span><i class="far fa-user me-1"></i> ${m.usuario}</span>
+                                    <span>${m.data}</span>
                                 </div>
                             </li>
                         `;

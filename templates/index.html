@@ -189,6 +189,26 @@
         z-index: 1000;
         transition: all 0.3s;
       }
+      
+      /* --- NOVO: ANIMAÇÃO NUDGE --- */
+      @keyframes shake {
+        0% { transform: translate(2px, 1px) rotate(0deg); }
+        10% { transform: translate(-1px, -2px) rotate(-1deg); }
+        20% { transform: translate(-3px, 0px) rotate(1deg); }
+        30% { transform: translate(3px, 2px) rotate(0deg); }
+        40% { transform: translate(1px, -1px) rotate(1deg); }
+        50% { transform: translate(-1px, 2px) rotate(-1deg); }
+        60% { transform: translate(-3px, 1px) rotate(0deg); }
+        70% { transform: translate(3px, 1px) rotate(-1deg); }
+        80% { transform: translate(-1px, -1px) rotate(1deg); }
+        90% { transform: translate(1px, 2px) rotate(0deg); }
+        100% { transform: translate(1px, -2px) rotate(-1deg); }
+      }
+      .shake-animation {
+        animation: shake 0.4s;
+        animation-iteration-count: 2; /* Treme 2 vezes rápido */
+      }
+      
       @media (max-width: 576px) {
         .chat-btn {
           width: 50px;
@@ -327,8 +347,10 @@
     </style>
   </head>
   <body>
-    <audio id="soundMsg" src="/static/sounds/message.mp3"></audio>
+    <audio id="soundMsg" src="/static/sounds/receber.mp3"></audio>
+    <audio id="soundSend" src="/static/sounds/message.mp3"></audio>
     <audio id="soundCard" src="/static/sounds/new_card.mp3"></audio>
+    <audio id="soundNudge" src="/static/sounds/nudge.mp3"></audio> <!-- SOM DO NUDGE -->
 
     <div class="navbar-custom">
       <a class="navbar-brand fw-bold" href="/" style="font-size: 1.5rem">
@@ -517,14 +539,10 @@
                 </button>
                 {% endif %}
               </div>
-              {% if card.created_by %}
-              <div
-                class="small text-dark fst-italic"
-                style="font-size: 0.7rem; opacity: 0.8"
-              >
-                Por: {{ card.created_by }}
-              </div>
-              {% endif %}
+              <div class="small text-dark fst-italic" style="font-size: 0.7rem; opacity: 0.8">
+  {% if card.created_by %}Por: {{ card.created_by }}{% endif %}
+  {% if card.data_criacao %}{{ ' • ' if card.created_by else '' }}<i class="far fa-clock"></i> {{ card.data_criacao }}{% endif %}
+</div>
             </div>
             
             <div
@@ -604,6 +622,12 @@
             <button type="button" class="btn btn-light text-secondary border-0" onclick="document.getElementById('chatInputFile').click()" title="Anexar Imagem">
                 <i class="fas fa-paperclip fs-5"></i>
             </button>
+
+            <!-- BOTÃO NUDGE -->
+            <button type="button" class="btn btn-light text-warning border-0 fs-5" onclick="enviarNudge()" title="Chamar Atenção (Nudge)">
+                <i class="fas fa-hand-rock"></i>
+            </button>
+
             <input type="file" id="chatInputFile" accept="image/*" style="display:none;" onchange="anexarImagemChat(event)">
             
             <input type="text" id="msgInput" class="form-control rounded-pill bg-light border-0 px-3" placeholder="Digite ou cole um print (Ctrl+V)..." autocomplete="off" />
@@ -843,6 +867,21 @@
       </div>
     </div>
 
+    <!-- TOAST DE NOTIFICAÇÃO DE MENSAGEM -->
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+      <div id="toastNovaMensagem" class="toast shadow-lg" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="6000">
+        <div class="toast-header bg-primary text-white border-0">
+          <i class="fas fa-comment-dots me-2"></i>
+          <strong class="me-auto">Nova Mensagem!</strong>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body bg-white fw-bold text-dark" style="cursor: pointer; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;" onclick="abrirChatPeloToast()">
+          Você recebeu mensagens não lidas.<br>
+          <span class="text-primary text-decoration-underline small">Clique aqui para abrir o chat</span>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script>
@@ -1058,33 +1097,70 @@
 
       function playSound(type) { try { if (type === "msg") document.getElementById("soundMsg").play(); if (type === "card") document.getElementById("soundCard").play(); } catch (e) { console.log("Som bloqueado", e); } }
 
+      // --- LÓGICA DO TOAST DE NOTIFICAÇÃO ---
+      function mostrarNotificacaoToast() {
+          let toastEl = document.getElementById('toastNovaMensagem');
+          let toast = new bootstrap.Toast(toastEl);
+          toast.show();
+      }
+
+      function abrirChatPeloToast() {
+          let toastEl = document.getElementById('toastNovaMensagem');
+          let toast = bootstrap.Toast.getInstance(toastEl);
+          if (toast) toast.hide(); 
+          document.getElementById("btnChatGlobal").click(); 
+      }
+
+      // --- LÓGICA DO NUDGE (CHAMAR ATENÇÃO) ---
+      function enviarNudge() {
+          let payload = { texto: "!!NUDGE!!", imagem_base64: "", tipo_chat: chatTipoAtual };
+          if(chatTipoAtual === 'setor') payload.setor_id = chatDestinoAtual;
+          if(chatTipoAtual === 'direto') payload.destinatario = chatDestinoAtual;
+          fetch("/chat/enviar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+          .then(() => carregarChat());
+      }
+
+      function tocarNudge() {
+          try { document.getElementById("soundNudge").play(); } catch(e){}
+          document.body.classList.add("shake-animation");
+          setTimeout(() => document.body.classList.remove("shake-animation"), 800);
+      }
+
       function checkUpdates() {
         if (mousePressionado) return;
         fetch("/verificar_atualizacao?t=" + new Date().getTime()).then((r) => r.json()).then((data) => {
             if (versaoLocal === null) { versaoLocal = data.timestamp; lastChatId = data.chat_id; localLastCardId = data.last_card_id; carregarChat(); return; }
             
-            // 1. Mensagens Novas (Agora o som toca certo e o botão pisca)
+            // 1. Mensagens Novas (Nudge, Som e Toast)
             if (data.chat_id !== lastChatId) { 
                 lastChatId = data.chat_id; 
                 carregarChat(); 
-                playSound("msg"); // 🔔 Som de mensagem!
-                if (!document.getElementById("chatOffcanvas").classList.contains("show")) {
-                    document.getElementById("btnChatGlobal").classList.add("chat-notification"); 
-                }
                 
-                // NOVO: Atualiza a lista de bolinhas vermelhas se o chat estiver fechado
+                // PULO DO GATO: Verifica se a mensagem nova foi enviada por mim
+                let euMesmo = (data.last_msg_remetente === "{{ user.username }}");
+
+                // Só toca Nudge ou Som de Receber se NÃO for eu mesmo
+                if (data.last_msg_texto === "!!NUDGE!!" && !euMesmo) {
+                    tocarNudge(); // Treme a tela
+                } else if (!euMesmo) {
+                    playSound("msg"); // Toca o som normal de notificação
+                }
+
+                // Só mostra a bolinha vermelha e o Toast se eu não estiver com o chat aberto e não for minha própria mensagem
+                if (!document.getElementById("chatOffcanvas").classList.contains("show") && !euMesmo) {
+                    document.getElementById("btnChatGlobal").classList.add("chat-notification"); 
+                    mostrarNotificacaoToast();
+                }
                 atualizarContatosChat();
             }
 
-            // 2. Atualizações do Kanban (Não recarrega mais se o chat estiver aberto)
+            // 2. Atualizações do Kanban
             if (data.timestamp > versaoLocal) {
               if (data.last_card_id > localLastCardId) { playSound("card"); localLastCardId = data.last_card_id; }
-              
               const modalAberto = document.querySelector(".modal.show");
               const chatAberto = document.getElementById("chatOffcanvas").classList.contains("show");
-              
               if (!modalAberto && !chatAberto) {
-                  versaoLocal = data.timestamp; // Salva que já atualizou pra não entrar em loop
+                  versaoLocal = data.timestamp; 
                   setTimeout(() => location.reload(), 1500); 
               }
             }
@@ -1101,9 +1177,8 @@
               let optSetores = document.getElementById("optSetores");
               let optUsuarios = document.getElementById("optUsuarios");
               let select = document.getElementById('chatRoomSelect');
-              let selecaoAtual = select.value; // Salva o que o usuário está vendo para não fechar a sala
+              let selecaoAtual = select.value; 
 
-              // Atualiza o Global
               let globalOpt = select.querySelector('option[value="global"]');
               if(globalOpt) globalOpt.innerText = data.nao_lidas && data.nao_lidas.global ? "🌍 Chat Global 🔴" : "🌍 Chat Global";
 
@@ -1123,15 +1198,13 @@
                   });
               }
 
-              // Restaura a sala selecionada apenas se ela ainda existir na lista
               let optionExists = select.querySelector(`option[value="${selecaoAtual}"]`);
               if(optionExists) select.value = selecaoAtual;
           });
       }
 
-      // Carrega a lista de usuários ao abrir a barra lateral
       document.getElementById('chatOffcanvas').addEventListener('show.bs.offcanvas', function () {
-          atualizarContatosChat(); // Puxa os contatos e as bolinhas vermelhas
+          atualizarContatosChat(); 
           carregarChat();
       });
 
@@ -1144,7 +1217,6 @@
       }
 
       function carregarChat() {
-          // Checa se o chat está aberto para enviar ao servidor
           let isChatOpen = document.getElementById("chatOffcanvas").classList.contains("show");
           
           let url = `/chat/listar?tipo=${chatTipoAtual}&aberto=${isChatOpen}`;
@@ -1161,44 +1233,52 @@
                       let check = m.eu_mesmo ? (m.lida ? '<span class="text-info ms-1"><i class="fas fa-check-double"></i></span>' : '<span class="text-secondary ms-1"><i class="fas fa-check"></i></span>') : '';
                       let imgHtml = m.imagem_path ? `<div class="mt-1"><a href="/static/uploads/${m.imagem_path}" target="_blank"><img src="/static/uploads/${m.imagem_path}" class="img-fluid rounded border" style="max-height:180px;"></a></div>` : '';
                       
-                      // --- NOVO: Lápis e Lixeira se a mensagem for sua ---
                       let acoesHtml = m.eu_mesmo ? `
                           <span class="ms-1" style="cursor:pointer; font-size:0.75rem; color:#888;" onclick="editarMensagem(${m.id})" title="Editar mensagem"><i class="fas fa-pencil-alt"></i></span>
                           <span class="ms-2" style="cursor:pointer; font-size:0.75rem; color:#dc3545;" onclick="apagarMensagem(${m.id})" title="Apagar mensagem"><i class="fas fa-trash"></i></span>
                       ` : '';
 
-                      html += `<div class="msg-bubble ${cls} shadow-sm" style="max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;">
-                                  ${m.eu_mesmo ? '' : `<div class="msg-user fw-bold text-primary mb-1" style="font-size:0.75rem;">${m.remetente}</div>`}
-                                  ${m.texto ? `<div id="texto-msg-${m.id}">${m.texto}</div>` : ''}
-                                  ${imgHtml}
-                                  <div class="msg-time mt-1 d-flex justify-content-end align-items-center" style="font-size:0.65rem; color:#888;">
-                                      ${acoesHtml} <span class="ms-auto">${m.hora} ${check}</span>
-                                  </div>
-                               </div>`;
+                      let btnApagarNudge = m.eu_mesmo ? `<span class="ms-2" style="cursor:pointer; color:#dc3545;" onclick="apagarMensagem(${m.id})"><i class="fas fa-trash"></i></span>` : '';
+
+                      // DESENHA O NUDGE OU A MENSAGEM NORMAL
+                      if (m.texto === "!!NUDGE!!") {
+                          html += `<div class="w-100 text-center my-2">
+                                      <span class="badge bg-warning text-dark px-3 py-2 fs-6 shadow-sm border border-secondary">
+                                          <i class="fas fa-hand-rock fs-5 me-2" style="animation: pulse 1s infinite;"></i> 
+                                          ${m.eu_mesmo ? "Você chamou a atenção!" : m.remetente + " chamou a atenção!"}
+                                      </span>
+                                      <div class="msg-time mt-1 text-center" style="font-size:0.65rem; color:#888;">
+                                          ${m.hora} ${check} ${btnApagarNudge}
+                                      </div>
+                                   </div>`;
+                      } else {
+                          html += `<div class="msg-bubble ${cls} shadow-sm" style="max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;">
+                                      ${m.eu_mesmo ? '' : `<div class="msg-user fw-bold text-primary mb-1" style="font-size:0.75rem;">${m.remetente}</div>`}
+                                      ${m.texto ? `<div id="texto-msg-${m.id}">${m.texto}</div>` : ''}
+                                      ${imgHtml}
+                                      <div class="msg-time mt-1 d-flex justify-content-end align-items-center" style="font-size:0.65rem; color:#888;">
+                                          ${acoesHtml} <span class="ms-auto">${m.hora} ${check}</span>
+                                      </div>
+                                   </div>`;
+                      }
                   });
               }
               
               let box = document.getElementById("chatBox"); 
-              // Impede que o chat pule lá pro final se a pessoa subiu a tela pra ler mensagens antigas
               let isScrolledToBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
               box.innerHTML = html; 
               if (isScrolledToBottom) { box.scrollTop = box.scrollHeight; }
               
-              // NOVO: Atualiza a bolinha vermelha (apaga ela se você acabou de ler)
-              if (isChatOpen) {
-                  atualizarContatosChat(); 
-              }
+              if (isChatOpen) { atualizarContatosChat(); }
           });
       }
 
-      // Este bloco garante que os tiques azuis (✓✓) apareçam sem recarregar a tela
       setInterval(() => {
           if (document.getElementById("chatOffcanvas").classList.contains("show")) {
               carregarChat();
           }
       }, 3000);
 
-      // 📎 Detectar "Ctrl+V" para colar prints
       document.getElementById('msgInput').addEventListener('paste', function(e) {
           if(e.clipboardData.items) {
               for(let i=0; i<e.clipboardData.items.length; i++) {
@@ -1216,7 +1296,6 @@
           }
       });
 
-      // 📎 Upload via botão clipe
       function anexarImagemChat(event) {
           if(event.target.files && event.target.files[0]) {
               let reader = new FileReader();
@@ -1244,6 +1323,9 @@
           
           if (!txt && !img) return;
 
+          // NOVO: Toca o som de envio instantaneamente!
+          try { document.getElementById("soundSend").play(); } catch(e){}
+
           let payload = { texto: txt, imagem_base64: img, tipo_chat: chatTipoAtual };
           if(chatTipoAtual === 'setor') payload.setor_id = chatDestinoAtual;
           if(chatTipoAtual === 'direto') payload.destinatario = chatDestinoAtual;
@@ -1257,7 +1339,6 @@
       }
       
       function limparChat() { 
-          // Agora envia via JSON qual chat o Admin quer apagar
           if (confirm("Apagar mensagens APENAS desta conversa atual?")) { 
               fetch("/chat/limpar", { 
                   method: "POST", 
@@ -1269,7 +1350,6 @@
           } 
       }
 
-      // --- NOVAS FUNÇÕES: Apagar e Editar Mensagem Individual ---
       function apagarMensagem(id) {
           if (confirm("Deseja realmente apagar esta mensagem?")) {
               fetch("/chat/excluir_msg/" + id, { method: "POST" })
@@ -1281,7 +1361,7 @@
           let textoAtualEl = document.getElementById("texto-msg-" + id);
           if (!textoAtualEl) return;
           
-          let textoAntigo = textoAtualEl.innerText.replace(" (editado)", ""); // Remove a tag se já foi editado
+          let textoAntigo = textoAtualEl.innerText.replace(" (editado)", ""); 
           let novoTexto = prompt("Edite sua mensagem:", textoAntigo);
           
           if (novoTexto && novoTexto.trim() !== "" && novoTexto !== textoAntigo) {
