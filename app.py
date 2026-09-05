@@ -30,6 +30,14 @@ def atualizar_versao():
     global ULTIMA_ATUALIZACAO
     ULTIMA_ATUALIZACAO = time.time()
 
+# --- RASTREAMENTO ONLINE ---
+usuarios_online = {}
+
+@app.before_request
+def rastrear_atividade():
+    if current_user.is_authenticated:
+        usuarios_online[current_user.username] = datetime.now()
+
 # --- TABELA DE ASSOCIAÇÃO (USUARIO <-> SETOR) ---
 usuario_setores = db.Table('usuario_setores',
     db.Column('usuario_id', db.Integer, db.ForeignKey('usuarios.id'), primary_key=True),
@@ -90,6 +98,13 @@ class Card(db.Model):
     
     comentarios = db.relationship('Comentario', backref='card', lazy=True, cascade="all, delete-orphan")
 
+class HistoricoCard(db.Model):
+    __tablename__ = 'historico_cards'
+    id = db.Column(db.Integer, primary_key=True)
+    card_id = db.Column(db.Integer, db.ForeignKey('cards.id', ondelete='CASCADE'), nullable=False)
+    setor_id = db.Column(db.Integer, db.ForeignKey('setores.id', ondelete='CASCADE'), nullable=False)
+    data_registro = db.Column(db.DateTime, default=datetime.now)
+
 class Comentario(db.Model):
     __tablename__ = 'comentarios'
     id = db.Column(db.Integer, primary_key=True)
@@ -131,6 +146,16 @@ class Movimentacao(db.Model):
     usuario = db.Column(db.String(100))
     data = db.Column(db.DateTime, default=datetime.now)
 
+class Evento(db.Model):
+    __tablename__ = 'eventos'
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(100), nullable=False)
+    inicio = db.Column(db.String(50), nullable=False) 
+    fim = db.Column(db.String(50), nullable=True)
+    cor = db.Column(db.String(20), default='#0079bf')
+    criado_por = db.Column(db.String(100))
+    visibilidade = db.Column(db.String(200), default='todos')
+
 @login_manager.user_loader
 def load_user(user_id): return Usuario.query.get(int(user_id))
 
@@ -148,10 +173,8 @@ def salvar_imagem_base64(base64_string):
     except: 
         return None
 
-# --- INTEGRAÇÃO N8N ---
 def notificar_status_n8n(card, nome_coluna):
     url_n8n = "http://localhost:5678/webhook-test/atualizacao-pedido" 
-    
     payload = {
         "cliente": card.cliente or "Cliente",
         "telefone": "5579999999999", 
@@ -159,11 +182,8 @@ def notificar_status_n8n(card, nome_coluna):
         "produto": card.titulo,
         "etapa_atual": nome_coluna
     }
-    
-    try:
-        requests.post(url_n8n, json=payload, timeout=3)
-    except Exception as e:
-        print(f"Erro ao notificar n8n: {e}")
+    try: requests.post(url_n8n, json=payload, timeout=3)
+    except Exception as e: print(f"Erro ao notificar n8n: {e}")
 
 # --- ROTAS PRINCIPAIS ---
 
@@ -181,10 +201,8 @@ def verificar_atualizacao():
         ).order_by(Mensagem.id.desc()).first()
         
     msg_id = ultimo_msg.id if ultimo_msg else 0
-    
     last_msg_texto = ultimo_msg.texto if ultimo_msg else ""
     last_msg_remetente = ultimo_msg.remetente if ultimo_msg else ""
-    
     last_card = Card.query.order_by(Card.id.desc()).first()
     card_id = last_card.id if last_card else 0
     
@@ -208,7 +226,6 @@ def chat_contatos():
         setores_permitidos = sorted(setores_permitidos, key=lambda s: s.ordem)
         
     setores = [{'id': s.id, 'nome': s.nome} for s in setores_permitidos]
-
     nao_lidas = {'global': False, 'setores': {}, 'direto': {}}
     
     if Mensagem.query.filter_by(tipo_chat='global', lida=False).filter(Mensagem.remetente != current_user.username).first():
@@ -222,7 +239,16 @@ def chat_contatos():
         if Mensagem.query.filter_by(tipo_chat='direto', remetente=u, destinatario=current_user.username, lida=False).first():
             nao_lidas['direto'][u] = True
 
-    return jsonify({'usuarios': usuarios, 'setores': setores, 'nao_lidas': nao_lidas})
+    agora = datetime.now()
+    status_online = {}
+    for u in usuarios:
+        ultimo_acesso = usuarios_online.get(u)
+        if ultimo_acesso and (agora - ultimo_acesso).total_seconds() < 300:
+            status_online[u] = True
+        else:
+            status_online[u] = False
+
+    return jsonify({'usuarios': usuarios, 'setores': setores, 'nao_lidas': nao_lidas, 'online': status_online})
 
 @app.route('/chat/enviar', methods=['POST'])
 @login_required
@@ -234,14 +260,12 @@ def enviar_mensagem():
     setor_id = data.get('setor_id')
     
     if not texto and not img_base64: return jsonify({'error': 'Vazio'}), 400
-    
     if tipo_chat == 'setor' and not current_user.is_admin:
         ids_permitidos = [str(s.id) for s in current_user.acessos]
         if str(setor_id) not in ids_permitidos:
             return jsonify({'error': 'Sem permissão para este setor'}), 403
     
     caminho_img = salvar_imagem_base64(img_base64) if img_base64 else None
-    
     nova_msg = Mensagem(
         remetente=current_user.username,
         texto=texto,
@@ -264,7 +288,6 @@ def listar_mensagens():
     chat_aberto = request.args.get('aberto') == 'true' 
     
     query = Mensagem.query
-    
     if tipo == 'global':
         query = query.filter_by(tipo_chat='global')
     elif tipo == 'direto':
@@ -275,23 +298,20 @@ def listar_mensagens():
     elif tipo == 'setor':
         if not current_user.is_admin:
             ids_permitidos = [str(s.id) for s in current_user.acessos]
-            if str(setor) not in ids_permitidos:
-                return jsonify([]) 
+            if str(setor) not in ids_permitidos: return jsonify([]) 
         query = query.filter_by(tipo_chat='setor', setor_id=setor)
         
     msgs = query.order_by(Mensagem.id.desc()).limit(50).all()
     msgs.reverse()
     
     alterou = False
-    
     if chat_aberto:
         for m in msgs:
             if m.remetente != current_user.username and not m.lida:
                 m.lida = True
                 alterou = True
                 
-    if alterou:
-        db.session.commit()
+    if alterou: db.session.commit()
     
     return jsonify([{
         'id': m.id, 'remetente': m.remetente, 'texto': m.texto, 
@@ -341,8 +361,7 @@ def index():
 @app.route('/usuarios')
 @login_required
 def usuarios():
-    if not current_user.is_admin: 
-        return redirect(url_for('index'))
+    if not current_user.is_admin: return redirect(url_for('index'))
     users = Usuario.query.all()
     todos_setores = Setor.query.order_by(Setor.ordem).all()
     return render_template('usuarios.html', users=users, setores=todos_setores, user=current_user)
@@ -350,9 +369,7 @@ def usuarios():
 @app.route('/usuario/salvar', methods=['POST'])
 @login_required
 def salvar_usuario():
-    if not current_user.is_admin: 
-        return "Negado", 403
-    
+    if not current_user.is_admin: return "Negado", 403
     uid = request.form.get('id')
     nome = request.form.get('username')
     senha = request.form.get('password')
@@ -387,8 +404,7 @@ def salvar_usuario():
 @app.route('/usuario/excluir/<int:id>', methods=['POST'])
 @login_required
 def excluir_usuario(id):
-    if not current_user.is_admin or id == current_user.id: 
-        return jsonify({'error': 'Erro'}), 400
+    if not current_user.is_admin or id == current_user.id: return jsonify({'error': 'Erro'}), 400
     db.session.delete(Usuario.query.get(id))
     db.session.commit()
     return jsonify({'success': True})
@@ -422,15 +438,11 @@ def comentar_card():
 @app.route('/adicionar', methods=['POST'])
 @login_required
 def adicionar():
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     img = salvar_imagem_base64(request.form.get('imagem_base64'))
-    
     s = Setor.query.order_by(Setor.ordem).first()
     st = Status.query.filter(Status.nome.ilike('Pendente')).first()
-    
-    if not st:
-        st = Status.query.order_by(Status.ordem).first()
+    if not st: st = Status.query.order_by(Status.ordem).first()
         
     c = Card(
         titulo=request.form.get('titulo'), 
@@ -445,6 +457,11 @@ def adicionar():
     )
     db.session.add(c)
     db.session.commit()
+    
+    # Registra a entrada no setor inicial
+    db.session.add(HistoricoCard(card_id=c.id, setor_id=s.id))
+    db.session.commit()
+    
     atualizar_versao()
     return redirect(url_for('index'))
 
@@ -453,8 +470,14 @@ def adicionar():
 def editar():
     c = Card.query.get(request.form.get('id'))
     if c:
+        novo_setor_id = int(request.form.get('setor_id')) if request.form.get('setor_id') else c.setor_id
+        
+        if c.setor_id != novo_setor_id:
+            c.setor_id = novo_setor_id
+            db.session.add(HistoricoCard(card_id=c.id, setor_id=novo_setor_id))
+            
         if request.form.get('status_id'): c.status_id = int(request.form.get('status_id'))
-        if request.form.get('setor_id'): c.setor_id = int(request.form.get('setor_id'))
+        
         if current_user.is_admin:
             c.titulo = request.form.get('titulo')
             c.cliente = request.form.get('cliente')
@@ -462,6 +485,7 @@ def editar():
             c.prazo = request.form.get('prazo')
             img = salvar_imagem_base64(request.form.get('imagem_base64'))
             if img: c.imagem_path = img
+            
         db.session.commit()
         atualizar_versao()
     return redirect(url_for('index'))
@@ -472,11 +496,15 @@ def mover():
     data = request.get_json()
     c = Card.query.get(data.get('id'))
     if c:
-        novo_setor_id = data.get('setor_id')
-        if 'setor_id' in data: c.setor_id = novo_setor_id
+        if 'setor_id' in data:
+            novo_setor_id = data.get('setor_id')
+            if c.setor_id != novo_setor_id:
+                c.setor_id = novo_setor_id
+                db.session.add(HistoricoCard(card_id=c.id, setor_id=novo_setor_id))
+
         if 'status_id' in data: c.status_id = data.get('status_id')
 
-        setor_destino = Setor.query.get(novo_setor_id)
+        setor_destino = Setor.query.get(c.setor_id)
         if setor_destino:
             nome_setor = setor_destino.nome.strip()
             if nome_setor == "Produção":
@@ -488,18 +516,14 @@ def mover():
 
         db.session.commit()
         atualizar_versao()
-
-        if setor_destino:
-            notificar_status_n8n(c, setor_destino.nome)
-
+        if setor_destino: notificar_status_n8n(c, setor_destino.nome)
         return jsonify({'success': True})
     return jsonify({'error': 'Erro'}), 404
 
 @app.route('/arquivar/<int:id>', methods=['POST'])
 @login_required
 def arquivar(id):
-    if not current_user.is_admin: 
-        return jsonify({'error': 'Negado'}), 403
+    if not current_user.is_admin: return jsonify({'error': 'Negado'}), 403
     c = Card.query.get(id)
     if c: 
         c.is_archived = True
@@ -511,8 +535,7 @@ def arquivar(id):
 @app.route('/excluir/<int:id>', methods=['POST'])
 @login_required
 def excluir(id):
-    if not current_user.is_admin: 
-        return jsonify({'error': 'Negado'}), 403
+    if not current_user.is_admin: return jsonify({'error': 'Negado'}), 403
     db.session.delete(Card.query.get(id))
     db.session.commit()
     atualizar_versao()
@@ -521,8 +544,7 @@ def excluir(id):
 @app.route('/configuracoes')
 @login_required
 def configuracoes():
-    if not current_user.is_admin: 
-        return redirect(url_for('index'))
+    if not current_user.is_admin: return redirect(url_for('index'))
     setores = Setor.query.order_by(Setor.ordem).all()
     lista_status = Status.query.order_by(Status.ordem).all() 
     upload_folder = os.path.join(app.root_path, 'static', 'uploads')
@@ -540,12 +562,9 @@ def configuracoes():
 @app.route('/setor/adicionar', methods=['POST'])
 @login_required
 def adicionar_setor():
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     u = Setor.query.order_by(Setor.ordem.desc()).first()
-    
     mostrar = request.form.get('mostrar_no_kanban') == 'on'
-    
     novo_setor = Setor(nome=request.form.get('nome'), ordem=(u.ordem + 1) if u else 1, mostrar_no_kanban=mostrar)
     db.session.add(novo_setor)
     db.session.commit()
@@ -565,8 +584,7 @@ def excluir_setor(id):
 @app.route('/setor/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_setor_config(id):
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     s = Setor.query.get(id)
     if s:
         s.nome = request.form.get('nome')
@@ -578,11 +596,9 @@ def editar_setor_config(id):
 @app.route('/setor/reordenar/<int:id>/<string:direcao>', methods=['POST'])
 @login_required
 def reordenar_setor(id, direcao):
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     s_atual = Setor.query.get(id)
-    if not s_atual: 
-        return redirect(url_for('configuracoes'))
+    if not s_atual: return redirect(url_for('configuracoes'))
     
     if direcao == 'subir':
         s_alvo = Setor.query.filter(Setor.ordem < s_atual.ordem).order_by(Setor.ordem.desc()).first()
@@ -598,8 +614,7 @@ def reordenar_setor(id, direcao):
 @app.route('/status/editar/<int:id>', methods=['POST'])
 @login_required
 def editar_status_config(id):
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     st = Status.query.get(id)
     if st:
         st.nome = request.form.get('nome')
@@ -611,11 +626,9 @@ def editar_status_config(id):
 @app.route('/status/ordenar_alfa', methods=['POST'])
 @login_required
 def ordenar_status_alfa():
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     lista = Status.query.order_by(Status.nome).all()
-    for idx, st in enumerate(lista):
-        st.ordem = idx + 1
+    for idx, st in enumerate(lista): st.ordem = idx + 1
     db.session.commit()
     atualizar_versao()
     return redirect(url_for('configuracoes'))
@@ -623,8 +636,7 @@ def ordenar_status_alfa():
 @app.route('/status/adicionar', methods=['POST'])
 @login_required
 def adicionar_status():
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     u = Status.query.order_by(Status.ordem.desc()).first()
     db.session.add(Status(nome=request.form.get('nome'), cor=request.form.get('cor'), ordem=(u.ordem+1) if u else 1))
     db.session.commit()
@@ -642,24 +654,19 @@ def excluir_status(id):
 @app.route('/chat/limpar', methods=['POST'])
 @login_required
 def limpar_chat():
-    if not current_user.is_admin: 
-        return jsonify({'error':'Negado'}), 403
-    
+    if not current_user.is_admin: return jsonify({'error':'Negado'}), 403
     data = request.get_json()
     tipo = data.get('tipo', 'global')
     dest = data.get('dest')
 
     query = Mensagem.query
-
-    if tipo == 'global':
-        query = query.filter_by(tipo_chat='global')
+    if tipo == 'global': query = query.filter_by(tipo_chat='global')
     elif tipo == 'direto':
         query = query.filter(db.or_(
             db.and_(Mensagem.remetente == current_user.username, Mensagem.destinatario == dest),
             db.and_(Mensagem.remetente == dest, Mensagem.destinatario == current_user.username)
         ))
-    elif tipo == 'setor':
-        query = query.filter_by(tipo_chat='setor', setor_id=dest)
+    elif tipo == 'setor': query = query.filter_by(tipo_chat='setor', setor_id=dest)
 
     query.delete(synchronize_session=False)
     db.session.commit()
@@ -682,7 +689,6 @@ def editar_msg(id):
     msg = Mensagem.query.get(id)
     data = request.get_json()
     novo_texto = data.get('texto')
-    
     if msg and msg.remetente == current_user.username and novo_texto:
         msg.texto = novo_texto + " (editado)"
         db.session.commit()
@@ -698,8 +704,7 @@ def api_arquivados():
 @app.route('/desarquivar/<int:card_id>', methods=['POST'])
 @login_required
 def desarquivar_card(card_id):
-    if not current_user.is_admin: 
-        return jsonify({'error':'Negado'}), 403
+    if not current_user.is_admin: return jsonify({'error':'Negado'}), 403
     c = Card.query.get(card_id)
     if c: 
         c.is_archived = False
@@ -711,15 +716,13 @@ def desarquivar_card(card_id):
 @app.route('/api/limpar_imagens', methods=['POST'])
 @login_required
 def limpar_imagens():
-    if current_user.funcao != 'admin': 
-        return jsonify({'error': 'Não autorizado'}), 403
+    if current_user.funcao != 'admin': return jsonify({'error': 'Não autorizado'}), 403
     dias = int(request.json.get('dias', 60)) 
     data_limite_obj = datetime.now() - timedelta(days=dias)
     cards_arquivados = Card.query.filter_by(is_archived=True).all()
     imagens_apagadas = 0
     espaco_liberado = 0
     upload_folder = os.path.join(app.root_path, 'static', 'uploads')
-    
     for card in cards_arquivados:
         try:
             if card.imagem_path:
@@ -733,103 +736,88 @@ def limpar_imagens():
                         card.imagem_path = None
                         imagens_apagadas += 1
                         espaco_liberado += tamanho
-        except Exception as e: 
-            print(f"Erro ao limpar card {card.id}: {e}")
-            
+        except Exception as e: print(f"Erro ao limpar card {card.id}: {e}")
     db.session.commit()
     mb_liberados = round(espaco_liberado / (1024 * 1024), 2)
     return jsonify({'success': True, 'qtd': imagens_apagadas, 'mb': mb_liberados})
 
-# --- CORREÇÃO DO DASHBOARD (Filtro de datas e cards arquivados) ---
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if not current_user.is_admin: 
-        return redirect(url_for('index'))
-    
+    if not current_user.is_admin: return redirect(url_for('index'))
     start_date = request.args.get('start', '')
     end_date = request.args.get('end', '')
-    
-    # Busca todos os cards para o relatório
+    setor_id = request.args.get('setor', '')
+    cliente_busca = request.args.get('cliente', '').strip()
+
+    s_date_obj = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0) if start_date else None
+    e_date_obj = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59) if end_date else None
+
+    hist_query = HistoricoCard.query
+    if s_date_obj: hist_query = hist_query.filter(HistoricoCard.data_registro >= s_date_obj)
+    if e_date_obj: hist_query = hist_query.filter(HistoricoCard.data_registro <= e_date_obj)
+    historico = hist_query.all()
+
     all_cards = Card.query.all()
+    filtered_cards = []
+    current_year = datetime.now().year
 
-    if start_date or end_date:
-        filtered_cards = []
-        current_year = datetime.now().year
+    for c in all_cards:
+        keep = True
+        if c.data_criacao:
+            try:
+                card_date = datetime.strptime(f"{c.data_criacao} {current_year}", "%d/%m %H:%M %Y")
+                if s_date_obj and card_date < s_date_obj: keep = False
+                if e_date_obj and card_date > e_date_obj: keep = False
+            except: pass
         
-        s_date = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
-        e_date = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
-
-        for c in all_cards:
-            if c.data_criacao:
-                try:
-                    # Converte a data salva (dd/mm HH:MM) para formato completo considerando o ano atual
-                    card_date = datetime.strptime(f"{c.data_criacao} {current_year}", "%d/%m %H:%M %Y").date()
-                    keep = True
-                    if s_date and card_date < s_date:
-                        keep = False
-                    if e_date and card_date > e_date:
-                        keep = False
-                    
-                    if keep:
-                        filtered_cards.append(c)
-                except:
-                    # Se falhar a conversão (formato antigo/inválido), mantém o card
-                    filtered_cards.append(c)
-            else:
-                filtered_cards.append(c)
+        if setor_id:
+            passou_pelo_setor = any(h.card_id == c.id and str(h.setor_id) == setor_id for h in historico)
+            esta_no_setor = str(c.setor_id) == setor_id
+            if not (passou_pelo_setor or esta_no_setor):
+                keep = False
                 
-        all_cards = filtered_cards
-    else:
-        # Sem filtro de datas, mostra apenas os ativos (não arquivados) para refletir a tela principal
-        all_cards = [c for c in all_cards if not c.is_archived]
+        # FILTRO DE CLIENTE (Não diferencia maiúsculas de minúsculas)
+        if cliente_busca:
+            if not c.cliente or cliente_busca.lower() not in c.cliente.lower():
+                keep = False
+
+        if keep and not c.is_archived:
+            filtered_cards.append(c)
 
     all_status = Status.query.all()
     all_setores = Setor.query.order_by(Setor.ordem).all()
-
-    total = len(all_cards)
+    
+    total = len(filtered_cards)
     atrasados = 0
     para_hoje = 0
     hoje_str = datetime.now().strftime('%Y-%m-%d')
 
-    for c in all_cards:
+    for c in filtered_cards:
         if c.prazo:
-            # Conta atrasados e para hoje baseando-se no prazo (mesmo para os filtrados)
-            if c.prazo < hoje_str and not c.is_archived: 
-                atrasados += 1
-            elif c.prazo == hoje_str and not c.is_archived: 
-                para_hoje += 1
+            if c.prazo < hoje_str: atrasados += 1
+            elif c.prazo == hoje_str: para_hoje += 1
 
-    labels_status = []
-    values_status = []
-    colors_status = []
-
+    labels_status, values_status, colors_status = [], [], []
     for st in all_status:
-        count = sum(1 for c in all_cards if c.status_id == st.id)
+        count = sum(1 for c in filtered_cards if c.status_id == st.id)
         if count > 0:
             labels_status.append(st.nome)
             values_status.append(count)
             colors_status.append(st.cor)
 
-    labels_setor = []
-    values_setor = []
+    labels_setor, values_setor = [], []
     for s in all_setores:
-        count = sum(1 for c in all_cards if c.setor_id == s.id)
         labels_setor.append(s.nome)
-        values_setor.append(count)
+        cards_passaram = set([h.card_id for h in historico if h.setor_id == s.id and any(fc.id == h.card_id for fc in filtered_cards)])
+        cards_atuais = set([c.id for c in filtered_cards if c.setor_id == s.id])
+        total_setor = cards_passaram.union(cards_atuais)
+        values_setor.append(len(total_setor))
 
-    return render_template('dashboard.html', 
-                           user=current_user, 
-                           total=total, 
-                           atrasados=atrasados, 
-                           para_hoje=para_hoje,
-                           labels_status=labels_status, 
-                           values_status=values_status,
-                           colors_status=colors_status, 
-                           labels_setor=labels_setor, 
-                           values_setor=values_setor,
-                           start_date=start_date,
-                           end_date=end_date)
+    return render_template('dashboard.html', user=current_user, total=total, atrasados=atrasados, para_hoje=para_hoje,
+                           labels_status=labels_status, values_status=values_status, colors_status=colors_status, 
+                           labels_setor=labels_setor, values_setor=values_setor, start_date=start_date, end_date=end_date,
+                           cards=filtered_cards, all_setores=all_setores, setor_selecionado=setor_id, cliente_busca=cliente_busca)
 
 @app.route('/estoque')
 @login_required
@@ -837,16 +825,13 @@ def estoque():
     if not current_user.is_admin and not current_user.acesso_estoque:
         flash('Acesso negado ao estoque.')
         return redirect(url_for('index'))
-        
     materiais = Material.query.order_by(Material.categoria, Material.nome).all()
     return render_template('estoque.html', materiais=materiais, user=current_user)
 
 @app.route('/estoque/adicionar_item', methods=['POST'])
 @login_required
 def adicionar_item_estoque():
-    if not current_user.is_admin: 
-        return "Negado", 403
-        
+    if not current_user.is_admin: return "Negado", 403
     novo = Material(
         nome=request.form.get('nome'), 
         categoria=request.form.get('categoria', 'Geral / Outros'),
@@ -862,14 +847,11 @@ def adicionar_item_estoque():
 @app.route('/estoque/movimentar', methods=['POST'])
 @login_required
 def movimentar_estoque():
-    if not current_user.is_admin and not current_user.acesso_estoque:
-        return "Negado", 403
-        
+    if not current_user.is_admin and not current_user.acesso_estoque: return "Negado", 403
     m = Material.query.get(request.form.get('id'))
     qtd = float(request.form.get('quantidade'))
     tipo = request.form.get('tipo')
     dest = request.form.get('destino')
-    
     if m:
         if tipo == 'SAIDA': 
             m.quantidade -= qtd
@@ -877,17 +859,14 @@ def movimentar_estoque():
         else: 
             m.quantidade += qtd
             user_reg = current_user.username
-            
         db.session.add(Movimentacao(material=m, tipo=tipo, quantidade=qtd, usuario=user_reg))
         db.session.commit()
-        
     return redirect(url_for('estoque'))
 
 @app.route('/estoque/excluir_item/<int:id>', methods=['POST'])
 @login_required
 def excluir_item_estoque(id):
-    if not current_user.is_admin: 
-        return "Negado", 403
+    if not current_user.is_admin: return "Negado", 403
     m = Material.query.get(id)
     if m: 
         db.session.delete(m)
@@ -899,6 +878,94 @@ def excluir_item_estoque(id):
 def historico_estoque(id):
     movs = Movimentacao.query.filter_by(material_id=id).order_by(Movimentacao.data.desc()).limit(20).all()
     return jsonify([{'tipo':m.tipo, 'qtd':m.quantidade, 'usuario':m.usuario, 'data':m.data.strftime("%d/%m %H:%M")} for m in movs])
+
+# --- ROTAS DA AGENDA ---
+@app.route('/agenda')
+@login_required
+def agenda():
+    setores = Setor.query.order_by(Setor.ordem).all()
+    return render_template('agenda.html', user=current_user, setores=setores)
+
+@app.route('/api/eventos')
+@login_required
+def api_eventos():
+    eventos = Evento.query.all()
+    eventos_filtrados = []
+    
+    user_setores = [str(s.id) for s in current_user.acessos]
+    
+    for e in eventos:
+        if e.visibilidade == 'todos':
+            eventos_filtrados.append(e) 
+            
+        elif e.visibilidade == 'admin':
+            if current_user.is_admin:
+                eventos_filtrados.append(e) 
+                
+        elif e.visibilidade == 'privado':
+            if e.criado_por == current_user.username:
+                eventos_filtrados.append(e) 
+                
+        else:
+            if current_user.is_admin:
+                eventos_filtrados.append(e) 
+            elif e.visibilidade:
+                setores_evento = e.visibilidade.split(',')
+                if any(s in setores_evento for s in user_setores):
+                    eventos_filtrados.append(e)
+                    
+    return jsonify([{
+        'id': e.id,
+        'title': e.titulo,
+        'start': e.inicio,
+        'end': e.fim,
+        'color': e.cor,
+        'extendedProps': {'criado_por': e.criado_por, 'visibilidade': e.visibilidade}
+    } for e in eventos_filtrados])
+
+@app.route('/api/evento/adicionar', methods=['POST'])
+@login_required
+def adicionar_evento():
+    if not current_user.is_admin: return jsonify({'error': 'Negado'}), 403
+    data = request.get_json()
+    e = Evento(
+        titulo=data.get('titulo'),
+        inicio=data.get('inicio'),
+        fim=data.get('fim'),
+        cor=data.get('cor', '#0079bf'),
+        criado_por=current_user.username,
+        visibilidade=data.get('visibilidade', 'todos') 
+    )
+    db.session.add(e)
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/evento/editar/<int:id>', methods=['POST'])
+@login_required
+def editar_evento(id):
+    if not current_user.is_admin: return jsonify({'error': 'Negado'}), 403
+    data = request.get_json()
+    e = Evento.query.get(id)
+    if e:
+        if 'titulo' in data: e.titulo = data.get('titulo')
+        if 'inicio' in data: e.inicio = data.get('inicio')
+        if 'fim' in data: e.fim = data.get('fim')
+        if 'cor' in data: e.cor = data.get('cor')
+        if 'visibilidade' in data: e.visibilidade = data.get('visibilidade')
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'error': 'Não encontrado'}), 404
+
+@app.route('/api/evento/excluir/<int:id>', methods=['POST'])
+@login_required
+def excluir_evento(id):
+    if not current_user.is_admin: return jsonify({'error': 'Negado'}), 403
+    e = Evento.query.get(id)
+    if e:
+        db.session.delete(e)
+        db.session.commit()
+        return jsonify({'success': True})
+    return jsonify({'error': 'Não encontrado'}), 404
 
 if __name__ == '__main__':
     if not os.path.exists(os.path.join(basedir, 'printflow.db')):

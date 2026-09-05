@@ -344,15 +344,19 @@
         font-size: 0.7rem;
         float: right;
       }
+
+      /* --- NOVOS ESTILOS PARA CHAT (RESPONDER E MENCIONAR) --- */
+      .reply-quote { background: rgba(0,0,0,0.05); border-left: 4px solid #0079bf; padding: 6px 10px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 6px; color: #555; }
+      .reply-preview-box { background: #f1f2f6; border-left: 4px solid #0079bf; padding: 8px; font-size: 0.85rem; display: none; position: relative; border-top-left-radius: 8px; border-top-right-radius: 8px; margin: 0 10px; }
+      .mention-badge { background-color: #0079bf; color: white; padding: 2px 6px; border-radius: 10px; font-weight: bold; font-size: 0.8rem; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+      .msg-user-clickable:hover { text-decoration: underline; opacity: 0.8; }
     </style>
   </head>
   <body>
     <audio id="soundMsg" src="/static/sounds/receber.mp3"></audio>
     <audio id="soundSend" src="/static/sounds/message.mp3"></audio>
     <audio id="soundCard" src="/static/sounds/new_card.mp3"></audio>
-    <audio id="soundNudge" src="/static/sounds/nudge.mp3"></audio> <!-- SOM DO NUDGE -->
-
-    <div class="navbar-custom">
+    <audio id="soundNudge" src="/static/sounds/nudge.mp3"></audio> <div class="navbar-custom">
       <a class="navbar-brand fw-bold" href="/" style="font-size: 1.5rem">
         <i class="fas fa-layer-group text-primary me-2"></i>Print<span
           style="color: #0dcaf0"
@@ -422,6 +426,8 @@
           ><i class="fas fa-boxes"></i
         ></a>
         {% endif %}
+
+        <a href="/agenda" class="btn btn-light text-primary fw-bold btn-sm px-3 shadow-sm mx-1" title="Agenda"><i class="fas fa-calendar-alt"></i> <span class="d-none d-md-inline ms-1">Agenda</span></a>
 
         <div
           class="small d-flex align-items-center gap-2 border-start ps-3 ms-2 border-white border-opacity-25"
@@ -616,6 +622,14 @@
             <input type="hidden" id="chatBase64">
         </div>
 
+        <div id="replyPreview" class="reply-preview-box shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <strong class="text-primary" id="replyName"><i class="fas fa-reply me-1"></i> Nome</strong>
+                <button type="button" class="btn-close" style="font-size: 0.6rem;" onclick="cancelarReply()"></button>
+            </div>
+            <div id="replyText" class="text-truncate text-muted" style="font-size: 0.75rem;">Texto...</div>
+        </div>
+
         <div class="p-2 border-top bg-white">
           <form id="formChat" onsubmit="enviarMensagem(event)" class="d-flex gap-2 align-items-center">
             
@@ -623,7 +637,6 @@
                 <i class="fas fa-paperclip fs-5"></i>
             </button>
 
-            <!-- BOTÃO NUDGE -->
             <button type="button" class="btn btn-light text-warning border-0 fs-5" onclick="enviarNudge()" title="Chamar Atenção (Nudge)">
                 <i class="fas fa-hand-rock"></i>
             </button>
@@ -633,8 +646,7 @@
             <input type="text" id="msgInput" class="form-control rounded-pill bg-light border-0 px-3" placeholder="Digite ou cole um print (Ctrl+V)..." autocomplete="off" />
             
             <button type="submit" class="btn btn-primary rounded-circle" style="width: 40px; height: 40px; padding: 0;">
-                <i class="fas fa-paper-plane"></i>
-            </button>
+    <i class="fas fa-arrow-right"></i> </button>
           </form>
         </div>
       </div>
@@ -867,7 +879,6 @@
       </div>
     </div>
 
-    <!-- TOAST DE NOTIFICAÇÃO DE MENSAGEM -->
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
       <div id="toastNovaMensagem" class="toast shadow-lg" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="6000">
         <div class="toast-header bg-primary text-white border-0">
@@ -913,6 +924,11 @@
 
       document.addEventListener("DOMContentLoaded", function () {
         verificarTelefonesCards(); aplicarSemaforo(); ocultarTelefonesNaTela();
+
+        // Pede permissão para notificações do Windows/Mac
+        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+            Notification.requestPermission();
+        }
 
         // Enter envia comentário
         document.getElementById("inputComentario").addEventListener("keypress", function(e) {
@@ -1120,10 +1136,21 @@
           .then(() => carregarChat());
       }
 
-      function tocarNudge() {
+      function tocarNudge(remetente = "Alguém") {
           try { document.getElementById("soundNudge").play(); } catch(e){}
           document.body.classList.add("shake-animation");
           setTimeout(() => document.body.classList.remove("shake-animation"), 800);
+          
+          if ("Notification" in window && Notification.permission === "granted") {
+              let notificacao = new Notification("PrintFlow: ATENÇÃO!", {
+                  body: remetente + " está a chamar a sua atenção no chat!",
+                  requireInteraction: true
+              });
+              notificacao.onclick = function() {
+                  window.focus(); 
+                  this.close();
+              };
+          }
       }
 
       function checkUpdates() {
@@ -1141,7 +1168,7 @@
 
                 // Só toca Nudge ou Som de Receber se NÃO for eu mesmo
                 if (data.last_msg_texto === "!!NUDGE!!" && !euMesmo) {
-                    tocarNudge(); // Treme a tela
+                    tocarNudge(data.last_msg_remetente); // Treme o ecrã e notifica
                 } else if (!euMesmo) {
                     playSound("msg"); // Toca o som normal de notificação
                 }
@@ -1171,6 +1198,32 @@
       // --- LÓGICA DO CHAT 2.0 ---
       let chatTipoAtual = 'global';
       let chatDestinoAtual = '';
+
+      // --- NOVA LÓGICA DE REPLY E MENÇÃO ---
+      let currentReply = null;
+
+      function prepararReply(remetente, textoId) {
+          let textoElement = document.getElementById(textoId);
+          if(!textoElement) return;
+          let texto = textoElement.innerText;
+          if(texto.length > 60) texto = texto.substring(0, 60) + '...';
+          currentReply = { remetente: remetente, texto: texto };
+          document.getElementById('replyName').innerHTML = '<i class="fas fa-reply me-1"></i> ' + remetente;
+          document.getElementById('replyText').innerText = texto;
+          document.getElementById('replyPreview').style.display = 'block';
+          document.getElementById('msgInput').focus();
+      }
+
+      function cancelarReply() {
+          currentReply = null;
+          document.getElementById('replyPreview').style.display = 'none';
+      }
+
+      function mencionarUsuario(nome) {
+          let input = document.getElementById('msgInput');
+          input.value += `@${nome} `;
+          input.focus();
+      }
 
       function atualizarContatosChat() {
           fetch("/chat/contatos").then(r => r.json()).then(data => {
@@ -1233,12 +1286,34 @@
                       let check = m.eu_mesmo ? (m.lida ? '<span class="text-info ms-1"><i class="fas fa-check-double"></i></span>' : '<span class="text-secondary ms-1"><i class="fas fa-check"></i></span>') : '';
                       let imgHtml = m.imagem_path ? `<div class="mt-1"><a href="/static/uploads/${m.imagem_path}" target="_blank"><img src="/static/uploads/${m.imagem_path}" class="img-fluid rounded border" style="max-height:180px;"></a></div>` : '';
                       
-                      let acoesHtml = m.eu_mesmo ? `
+                      let textoFinal = m.texto || "";
+                      let replyHtml = "";
+                      
+                      // Extrair código de resposta se existir
+                      const replyRegex = /^\[REPLY:([^\|]+)\|([^\]]+)\]\s*([\s\S]*)$/;
+                      const match = textoFinal.match(replyRegex);
+                      if (match) {
+                          replyHtml = `<div class="reply-quote"><strong class="text-primary"><i class="fas fa-reply"></i> ${match[1]}</strong><br><span class="text-muted">${match[2]}</span></div>`;
+                          textoFinal = match[3];
+                      }
+
+                      // Transformar @Nomes em etiquetas
+                      textoFinal = textoFinal.replace(/@(\w+)/g, '<span class="mention-badge">@$1</span>');
+
+                      let btnReply = `<span class="ms-2" style="cursor:pointer; font-size:0.75rem; color:#0079bf;" onclick="prepararReply('${m.remetente}', 'texto-msg-${m.id}')" title="Responder"><i class="fas fa-reply"></i></span>`;
+                      let acoesHtml = btnReply;
+                      
+                      let btnApagarNudge = "";
+                      
+                      if (m.eu_mesmo) {
+                          acoesHtml += `
                           <span class="ms-1" style="cursor:pointer; font-size:0.75rem; color:#888;" onclick="editarMensagem(${m.id})" title="Editar mensagem"><i class="fas fa-pencil-alt"></i></span>
                           <span class="ms-2" style="cursor:pointer; font-size:0.75rem; color:#dc3545;" onclick="apagarMensagem(${m.id})" title="Apagar mensagem"><i class="fas fa-trash"></i></span>
-                      ` : '';
+                          `;
+                          btnApagarNudge = `<span class="ms-2" style="cursor:pointer; color:#dc3545;" onclick="apagarMensagem(${m.id})"><i class="fas fa-trash"></i></span>`;
+                      }
 
-                      let btnApagarNudge = m.eu_mesmo ? `<span class="ms-2" style="cursor:pointer; color:#dc3545;" onclick="apagarMensagem(${m.id})"><i class="fas fa-trash"></i></span>` : '';
+                      let nomeClicavel = m.eu_mesmo ? '' : `<div class="msg-user msg-user-clickable fw-bold text-primary mb-1" style="font-size:0.75rem; cursor:pointer;" onclick="mencionarUsuario('${m.remetente}')" title="Clique para marcar @${m.remetente}">${m.remetente}</div>`;
 
                       // DESENHA O NUDGE OU A MENSAGEM NORMAL
                       if (m.texto === "!!NUDGE!!") {
@@ -1253,8 +1328,9 @@
                                    </div>`;
                       } else {
                           html += `<div class="msg-bubble ${cls} shadow-sm" style="max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 0.9rem;">
-                                      ${m.eu_mesmo ? '' : `<div class="msg-user fw-bold text-primary mb-1" style="font-size:0.75rem;">${m.remetente}</div>`}
-                                      ${m.texto ? `<div id="texto-msg-${m.id}">${m.texto}</div>` : ''}
+                                      ${nomeClicavel}
+                                      ${replyHtml}
+                                      ${textoFinal ? `<div id="texto-msg-${m.id}">${textoFinal}</div>` : ''}
                                       ${imgHtml}
                                       <div class="msg-time mt-1 d-flex justify-content-end align-items-center" style="font-size:0.65rem; color:#888;">
                                           ${acoesHtml} <span class="ms-auto">${m.hora} ${check}</span>
@@ -1326,6 +1402,11 @@
           // NOVO: Toca o som de envio instantaneamente!
           try { document.getElementById("soundSend").play(); } catch(e){}
 
+          // Embutir o Reply antes de enviar
+          if (currentReply && txt) {
+              txt = `[REPLY:${currentReply.remetente}|${currentReply.texto}] ` + txt;
+          }
+
           let payload = { texto: txt, imagem_base64: img, tipo_chat: chatTipoAtual };
           if(chatTipoAtual === 'setor') payload.setor_id = chatDestinoAtual;
           if(chatTipoAtual === 'direto') payload.destinatario = chatDestinoAtual;
@@ -1334,6 +1415,7 @@
           .then(() => {
               input.value = "";
               removerPrintChat();
+              cancelarReply();
               carregarChat();
           });
       }

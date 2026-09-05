@@ -4,135 +4,52 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Relatório de Produção - PrintFlow</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    />
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-      body {
-        background-color: #f4f5f7;
-        font-family: "Segoe UI", sans-serif;
-      }
-      .card-kpi {
-        border: none;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        transition: transform 0.2s;
-      }
-      .icon-box {
-        font-size: 2rem;
-        opacity: 0.8;
-      }
-
-      /* Ajuste do Gráfico para não cortar */
-      .chart-container {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-        height: 400px;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-      }
-
-      /* --- ESTILOS DE IMPRESSÃO --- */
+      body { background-color: #f4f5f7; font-family: "Segoe UI", sans-serif; }
+      .card-kpi { border: none; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); }
+      .icon-box { font-size: 2rem; opacity: 0.8; }
+      .chart-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); height: 400px; display: flex; flex-direction: column; }
       @media print {
-        body {
-          background-color: white;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-        .no-print {
-          display: none !important;
-        }
-        .card-kpi {
-          box-shadow: none;
-          border: 1px solid #ddd;
-        }
-        .chart-container {
-          box-shadow: none;
-          border: 1px solid #ddd;
-          page-break-inside: avoid;
-        }
-        .container {
-          max-width: 100%;
-          padding: 0;
-        }
-        h2 {
-          font-size: 1.5rem;
-          color: black !important;
-        }
+        .navbar-custom, .btn, form, input, select, .no-print { display: none !important; }
+        body { background-color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .shadow-sm, .card-kpi, .chart-container { box-shadow: none !important; border: 1px solid #dee2e6 !important; page-break-inside: avoid; }
+        .container { max-width: 100%; padding: 0; }
+        h2, h5 { color: black !important; }
       }
     </style>
   </head>
   <body>
-    <nav
-      class="navbar navbar-expand-lg navbar-dark bg-primary mb-4 px-3 shadow-sm no-print"
-    >
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4 px-3 shadow-sm navbar-custom">
       <div class="container-fluid p-0">
-        <a class="navbar-brand fw-bold" href="/"
-          ><i class="fas fa-layer-group me-2"></i>PrintFlow</a
-        >
-
+        <a class="navbar-brand fw-bold" href="/"><i class="fas fa-layer-group me-2"></i>PrintFlow</a>
         <div class="d-flex align-items-center gap-3 ms-auto">
-          <form
-            action="/dashboard"
-            method="GET"
-            class="d-flex gap-2 align-items-center bg-white bg-opacity-10 p-1 rounded"
-          >
-            <input
-              type="date"
-              name="start"
-              class="form-control form-control-sm border-0"
-              title="Data Inicial"
-              value="{{ start_date }}"
-              style="max-width: 130px"
-            />
+          <form action="/dashboard" method="GET" class="d-flex gap-2 align-items-center bg-white bg-opacity-10 p-1 rounded">
+            <input type="date" name="start" class="form-control form-control-sm border-0" title="Data Inicial" value="{{ start_date }}" style="max-width: 130px"/>
             <span class="text-white small">até</span>
-            <input
-              type="date"
-              name="end"
-              class="form-control form-control-sm border-0"
-              title="Data Final"
-              value="{{ end_date }}"
-              style="max-width: 130px"
-            />
-            <button
-              type="submit"
-              class="btn btn-light btn-sm text-primary fw-bold"
-              title="Filtrar"
-            >
-              <i class="fas fa-filter"></i>
-            </button>
-            {% if start_date or end_date %}
-            <a
-              href="/dashboard"
-              class="btn btn-outline-light btn-sm border-0"
-              title="Limpar Filtro"
-            >
-              <i class="fas fa-times"></i>
-            </a>
+            <input type="date" name="end" class="form-control form-control-sm border-0" title="Data Final" value="{{ end_date }}" style="max-width: 130px"/>
+            
+            <select name="setor" class="form-select form-select-sm border-0" style="max-width: 160px">
+              <option value="">Todos os Setores</option>
+              {% for s in all_setores %}
+              <option value="{{ s.id }}" {% if setor_selecionado == s.id|string %}selected{% endif %}>{{ s.nome }}</option>
+              {% endfor %}
+            </select>
+
+            <input type="text" name="cliente" class="form-control form-control-sm border-0" placeholder="Buscar Cliente..." value="{{ cliente_busca }}" style="max-width: 150px">
+
+            <button type="submit" class="btn btn-light btn-sm text-primary fw-bold" title="Filtrar"><i class="fas fa-search"></i></button>
+            {% if start_date or end_date or setor_selecionado or cliente_busca %}
+            <a href="/dashboard" class="btn btn-outline-light btn-sm border-0" title="Limpar Filtros"><i class="fas fa-times"></i></a>
             {% endif %}
           </form>
 
-          <div class="vr text-white opacity-50"></div>
+          <div class="vr text-white opacity-50 no-print"></div>
 
-          <button
-            onclick="window.print()"
-            class="btn btn-light btn-sm fw-bold text-primary"
-          >
-            <i class="fas fa-print me-1"></i> Imprimir
-          </button>
-          <a href="/" class="btn btn-outline-light btn-sm fw-bold">
-            <i class="fas fa-arrow-left"></i> Voltar
-          </a>
+          <button onclick="window.print()" class="btn btn-light btn-sm fw-bold text-primary no-print"><i class="fas fa-print me-1"></i> Imprimir</button>
+          <a href="/" class="btn btn-outline-light btn-sm fw-bold no-print"><i class="fas fa-arrow-left"></i> Voltar</a>
         </div>
       </div>
     </nav>
@@ -140,17 +57,15 @@
     <div class="container">
       <div class="d-flex justify-content-between align-items-end mb-4">
         <div>
-          <h2 class="text-secondary mb-0">
-            <i class="fas fa-chart-pie me-2"></i>Relatório Geral
-          </h2>
+          <h2 class="text-secondary mb-0"><i class="fas fa-chart-pie me-2"></i>Relatório Geral</h2>
           <small class="text-muted" id="dataRelatorio">Gerado em: </small>
 
-          {% if start_date or end_date %}
-          <div
-            class="mt-2 p-2 bg-warning bg-opacity-10 border border-warning rounded text-dark d-inline-block"
-          >
-            <strong><i class="fas fa-filter me-1"></i>Período Filtrado:</strong>
-            {{ start_date | default('Início', true) }} até {{ end_date | default('Hoje', true) }}
+          {% if start_date or end_date or setor_selecionado or cliente_busca %}
+          <div class="mt-2 p-2 bg-warning bg-opacity-10 border border-warning rounded text-dark d-inline-block">
+            <strong><i class="fas fa-filter me-1"></i>Filtros Ativos:</strong>
+            {% if start_date or end_date %} Data: {{ start_date | default('Início', true) }} até {{ end_date | default('Hoje', true) }}{% endif %}
+            {% if setor_selecionado %} | Setor: {% for s in all_setores %}{% if s.id|string == setor_selecionado %}{{ s.nome }}{% endif %}{% endfor %}{% endif %}
+            {% if cliente_busca %} | <strong>Cliente:</strong> {{ cliente_busca }}{% endif %}
           </div>
           {% endif %}
         </div>
@@ -158,53 +73,35 @@
 
       <div class="row mb-4 g-3">
         <div class="col-md-4 col-4">
-          <div
-            class="card card-kpi bg-white p-3 border-start border-5 border-primary"
-          >
+          <div class="card card-kpi bg-white p-3 border-start border-5 border-primary">
             <div class="d-flex justify-content-between align-items-center">
               <div>
-                <div class="text-muted small fw-bold text-uppercase">
-                  Total (Período)
-                </div>
+                <div class="text-muted small fw-bold text-uppercase">Total (Período)</div>
                 <div class="h2 mb-0 fw-bold text-primary">{{ total }}</div>
               </div>
-              <div class="icon-box text-primary no-print">
-                <i class="fas fa-tasks"></i>
-              </div>
+              <div class="icon-box text-primary no-print"><i class="fas fa-tasks"></i></div>
             </div>
           </div>
         </div>
         <div class="col-md-4 col-4">
-          <div
-            class="card card-kpi bg-white p-3 border-start border-5 border-warning"
-          >
+          <div class="card card-kpi bg-white p-3 border-start border-5 border-warning">
             <div class="d-flex justify-content-between align-items-center">
               <div>
-                <div class="text-muted small fw-bold text-uppercase">
-                  Entrega Hoje
-                </div>
+                <div class="text-muted small fw-bold text-uppercase">Entrega Hoje</div>
                 <div class="h2 mb-0 fw-bold text-warning">{{ para_hoje }}</div>
               </div>
-              <div class="icon-box text-warning no-print">
-                <i class="fas fa-clock"></i>
-              </div>
+              <div class="icon-box text-warning no-print"><i class="fas fa-clock"></i></div>
             </div>
           </div>
         </div>
         <div class="col-md-4 col-4">
-          <div
-            class="card card-kpi bg-white p-3 border-start border-5 border-danger"
-          >
+          <div class="card card-kpi bg-white p-3 border-start border-5 border-danger">
             <div class="d-flex justify-content-between align-items-center">
               <div>
-                <div class="text-muted small fw-bold text-uppercase">
-                  Atrasados
-                </div>
+                <div class="text-muted small fw-bold text-uppercase">Atrasados</div>
                 <div class="h2 mb-0 fw-bold text-danger">{{ atrasados }}</div>
               </div>
-              <div class="icon-box text-danger no-print">
-                <i class="fas fa-exclamation-triangle"></i>
-              </div>
+              <div class="icon-box text-danger no-print"><i class="fas fa-exclamation-triangle"></i></div>
             </div>
           </div>
         </div>
@@ -225,6 +122,42 @@
         </div>
       </div>
 
+      <div class="row mt-4">
+        <div class="col-12">
+          <div class="card card-kpi bg-white p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="text-secondary mb-0"><i class="fas fa-list-alt me-2"></i>Detalhamento de Pedidos <span class="badge bg-primary ms-2">{{ total }}</span></h5>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th>Data de Entrada</th>
+                    <th>Título / OS</th>
+                    <th>Cliente</th>
+                    <th>Setor Atual (Sala)</th>
+                    <th>Status</th>
+                    <th>Prazo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for c in cards %}
+                  <tr>
+                    <td class="text-muted small">{{ c.data_criacao }}</td>
+                    <td class="fw-bold text-dark">{{ c.titulo }}</td>
+                    <td>{{ c.cliente }}</td>
+                    <td><span class="badge bg-light text-dark border border-secondary border-opacity-25">{{ c.setor_ref.nome if c.setor_ref else '-' }}</span></td>
+                    <td><span class="badge" style="background-color: {{ c.status_ref.cor if c.status_ref else '#ccc' }};">{{ c.status_ref.nome if c.status_ref else '-' }}</span></td>
+                    <td class="fw-bold">{{ c.prazo if c.prazo else 'Sem prazo' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="mt-5 text-center text-muted small d-none d-print-block">
         <hr />
         <p>PrintFlow v5.0 - Sistema de Gestão de Produção</p>
@@ -235,56 +168,25 @@
       const hoje = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
       document.getElementById('dataRelatorio').innerText += hoje;
 
-      // ATENÇÃO: A tag "| safe" previne erros de renderização no JavaScript e faz os gráficos aparecerem
       const labelsStatus = {{ labels_status | tojson | safe }};
       const valuesStatus = {{ values_status | tojson | safe }};
       const colorsStatus = {{ colors_status | tojson | safe }};
-
       const labelsSetor = {{ labels_setor | tojson | safe }};
       const valuesSetor = {{ values_setor | tojson | safe }};
 
       if (labelsStatus.length > 0) {
           new Chart(document.getElementById('chartStatus'), {
               type: 'doughnut',
-              data: {
-                  labels: labelsStatus,
-                  datasets: [{
-                      data: valuesStatus,
-                      backgroundColor: colorsStatus,
-                      borderWidth: 0
-                  }]
-              },
-              options: {
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                      legend: { position: 'right', labels: { boxWidth: 15, padding: 15 } }
-                  },
-                  layout: { padding: 10 }
-              }
+              data: { labels: labelsStatus, datasets: [{ data: valuesStatus, backgroundColor: colorsStatus, borderWidth: 0 }] },
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 15, padding: 15 } } }, layout: { padding: 10 } }
           });
-
           new Chart(document.getElementById('chartSetor'), {
               type: 'bar',
-              data: {
-                  labels: labelsSetor,
-                  datasets: [{
-                      label: 'Pedidos',
-                      data: valuesSetor,
-                      backgroundColor: '#0079bf',
-                      borderRadius: 5
-                  }]
-              },
-              options: {
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } },
-                  scales: { y: { beginAtZero: true, grid: { display: false } } }
-              }
+              data: { labels: labelsSetor, datasets: [{ label: 'Pedidos', data: valuesSetor, backgroundColor: '#0079bf', borderRadius: 5 }] },
+              options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { display: false } } } }
           });
       } else {
-          // Caso a busca não retorne nenhum pedido
-          document.querySelector('.row.g-4').innerHTML = '<div class="col-12 text-center text-muted mt-5"><i class="fas fa-folder-open fs-1 opacity-25 mb-3"></i><br>Nenhum pedido encontrado no período filtrado.</div>';
+          document.querySelector('.row.g-4').innerHTML = '<div class="col-12 text-center text-muted mt-5"><i class="fas fa-folder-open fs-1 opacity-25 mb-3"></i><br>Nenhum pedido encontrado nos filtros aplicados.</div>';
       }
     </script>
   </body>
